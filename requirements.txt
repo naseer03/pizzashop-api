@@ -1,0 +1,11 @@
+# Use pydantic>=2.11 for prebuilt wheels on Python 3.14+
+fastapi>=0.115
+uvicorn[standard]>=0.32
+sqlalchemy>=2.0.36
+pymysql>=1.1.1
+PyJWT>=2.8.0
+passlib>=1.7.4
+pydantic>=2.11
+pydantic-settings>=2.6
+python-multipart>=0.0.17
+email-validator>=2.2.0
