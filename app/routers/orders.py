@@ -268,7 +268,6 @@ def create_order(body: OrderCreate, _: CurrentAdmin, db: Session = Depends(get_d
 
     store = db.query(StoreSetting).first()
     tax_rate = store.tax_rate if store else Decimal("8.00")
-    delivery_fee = Decimal("3.99") if ot == OrderType.delivery else Decimal("0")
 
     subtotal = Decimal("0")
     line_entities: list[tuple[OrderItem, list[OrderItemTopping]]] = []
@@ -331,6 +330,15 @@ def create_order(body: OrderCreate, _: CurrentAdmin, db: Session = Depends(get_d
             special_instructions=it.special_instructions,
         )
         line_entities.append((oi, top_rows))
+
+    delivery_fee = Decimal("0")
+    if ot == OrderType.delivery:
+        base = store.delivery_fee if store else Decimal("3.99")
+        threshold = store.min_order_for_free_delivery if store else Decimal("0")
+        if threshold > 0 and subtotal >= threshold:
+            delivery_fee = Decimal("0")
+        else:
+            delivery_fee = base
 
     discount_amount = Decimal("0")
     tax_amount = (subtotal - discount_amount) * (tax_rate / Decimal("100"))

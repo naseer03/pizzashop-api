@@ -84,9 +84,20 @@ class StoreSettingsBody(BaseModel):
     website: str | None = None
     logo_url: str | None = None
     tax_rate: float | None = None
+    delivery_fee: float | None = None
+    min_order_for_free_delivery: float | None = None
     currency: str | None = None
     currency_symbol: str | None = None
     timezone: str | None = None
+
+
+class PaymentsSettingsBody(BaseModel):
+    """Tax rate is a percentage (e.g. 8.0 = 8%). If subtotal >= min_order_for_free_delivery (> 0), delivery fee is waived."""
+
+    tax_rate: float | None = None
+    delivery_fee: float | None = None
+    min_order_for_free_delivery: float | None = None
+    payment_methods: list[dict] | None = None
 
 
 class BusinessHourItem(BaseModel):
