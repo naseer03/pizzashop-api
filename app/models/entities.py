@@ -494,8 +494,6 @@ class StoreSetting(Base):
     website: Mapped[str | None] = mapped_column(String(255))
     logo_url: Mapped[str | None] = mapped_column(String(500))
     tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("8.00"))
-    delivery_fee: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("3.99"))
-    min_order_for_free_delivery: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
     currency: Mapped[str] = mapped_column(String(10), default="USD")
     currency_symbol: Mapped[str] = mapped_column(String(5), default="$")
     timezone: Mapped[str] = mapped_column(String(50), default="America/New_York")

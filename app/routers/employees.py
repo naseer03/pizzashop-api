@@ -71,11 +71,7 @@ def list_employees(
     search: Annotated[str | None, Query()] = None,
 ):
     q = db.query(Employee)
-    if status_filter is None:
-        q = q.filter(Employee.status == EmployeeStatus.active)
-    elif status_filter.lower() == "all":
-        pass
-    else:
+    if status_filter:
         try:
             q = q.filter(Employee.status == EmployeeStatus(status_filter))
         except ValueError:
@@ -253,7 +249,7 @@ def put_schedule(employee_id: int, body: EmployeeScheduleBody, _: CurrentAdmin, 
     return ok(_emp_dict(e))
 
 
-@router.delete("/{employee_id}")
+@router.delete("/{employee_id}", status_code=status.HTTP_204_NO_CONTENT)
 def deactivate_employee(employee_id: int, _: CurrentAdmin, db: Session = Depends(get_db)):
     e = db.get(Employee, employee_id)
     if not e:
@@ -263,11 +259,4 @@ def deactivate_employee(employee_id: int, _: CurrentAdmin, db: Session = Depends
         )
     e.status = EmployeeStatus.inactive
     db.commit()
-    db.refresh(e)
-    return ok(
-        {
-            "id": e.id,
-            "status": e.status.value,
-            "message": "Employee deactivated",
-        }
-    )
+    return None
