@@ -1,14 +1,15 @@
 from datetime import time
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, HTTPException, status
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import CurrentAdmin
-from app.models import BusinessHour, DayOfWeek, NotificationSetting, PaymentSetting, StoreSetting
-from app.schemas.ops import BusinessHourItem, StoreSettingsBody
-from app.utils.responses import ok
+from app.models import BusinessHour, DayOfWeek, NotificationSetting, StoreSetting
+from app.schemas.ops import BusinessHourItem, PaymentsSettingsBody, StoreSettingsBody
+from app.utils.responses import err, ok
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -25,7 +26,6 @@ def _store_dict(s: StoreSetting) -> dict:
         "email": s.email,
         "website": s.website,
         "logo_url": s.logo_url,
-        "tax_rate": float(s.tax_rate),
         "currency": s.currency,
         "currency_symbol": s.currency_symbol,
         "timezone": s.timezone,
@@ -90,21 +90,90 @@ def get_business_hours(_: CurrentAdmin, db: Session = Depends(get_db)):
     return ok(_business_hours_list(db))
 
 
+def _unwrap_business_hours_json(raw: Any) -> list[Any]:
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, dict):
+        # Common wrappers:
+        # - { data: [...] }
+        # - { success: true, data: [...] }
+        # - { success: true, data: { data: [...] } }
+        # - { business_hours: [...] } / { businessHours: [...] } / { hours: [...] }
+        for key in ("data", "businessHours", "business_hours", "hours"):
+            v = raw.get(key)
+            if isinstance(v, list):
+                return v
+            if isinstance(v, dict):
+                try:
+                    return _unwrap_business_hours_json(v)
+                except ValueError:
+                    pass
+    raise ValueError(
+        "Send a JSON array of hours, or an object with a list under "
+        "data, businessHours, business_hours, or hours."
+    )
+
+
+def _hh_mm(s: str) -> tuple[int, int]:
+    parts = s.strip().split(":")
+    if len(parts) < 2:
+        raise ValueError(f"Time must be HH:MM (e.g. 09:30), got {s!r}")
+    oh, om = int(parts[0]), int(parts[1])
+    if not (0 <= oh <= 23 and 0 <= om <= 59):
+        raise ValueError(f"Time out of range: {s!r}")
+    return oh, om
+
+
 @router.put("/business-hours")
-def put_business_hours(body: list[BusinessHourItem], _: CurrentAdmin, db: Session = Depends(get_db)):
-    for item in body:
+def put_business_hours(
+    _: CurrentAdmin,
+    db: Session = Depends(get_db),
+    body: Any = Body(...),
+):
+    try:
+        payload = _unwrap_business_hours_json(body)
+        items = TypeAdapter(list[BusinessHourItem]).validate_python(payload)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=err("VALIDATION_ERROR", str(e)),
+        ) from None
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=err(
+                "VALIDATION_ERROR",
+                "Invalid business hours entry.",
+                details={"errors": e.errors(include_url=False)},
+            ),
+        ) from None
+
+    for item in items:
         try:
             dow = DayOfWeek(item.day)
         except ValueError:
-            continue
+            allowed = ", ".join(d.value for d in DayOfWeek)
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=err(
+                    "VALIDATION_ERROR",
+                    f"Invalid day {item.day!r}. Expected one of: {allowed}",
+                ),
+            ) from None
         b = db.query(BusinessHour).filter(BusinessHour.day_of_week == dow).first()
         if not b:
             b = BusinessHour(day_of_week=dow)
             db.add(b)
             db.flush()
         b.is_open = item.is_open
-        oh, om = map(int, item.open_time.split(":")[:2])
-        ch, cm = map(int, item.close_time.split(":")[:2])
+        try:
+            oh, om = _hh_mm(item.open_time)
+            ch, cm = _hh_mm(item.close_time)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=err("VALIDATION_ERROR", str(e)),
+            ) from None
         b.open_time = time(oh, om)
         b.close_time = time(ch, cm)
     db.commit()
@@ -139,43 +208,40 @@ def put_notifications(
     return ok({r.setting_key: r.setting_value for r in rows})
 
 
-def _payments_list(db: Session) -> list[dict[str, Any]]:
-    rows = db.query(PaymentSetting).order_by(PaymentSetting.id).all()
-    return [
-        {
-            "method": r.payment_method,
-            "is_enabled": r.is_enabled,
-            "display_name": r.display_name,
-            "processing_fee_percent": float(r.processing_fee_percent),
-            "min_order_amount": float(r.min_order_amount),
-        }
-        for r in rows
-    ]
+def _store_for_payments(db: Session) -> StoreSetting:
+    s = db.query(StoreSetting).first()
+    if not s:
+        s = StoreSetting()
+        db.add(s)
+        db.commit()
+        db.refresh(s)
+    return s
+
+
+def _payments_payload(db: Session) -> dict[str, Any]:
+    s = _store_for_payments(db)
+    return {
+        "tax_rate": float(s.tax_rate),
+        "delivery_fee": float(s.delivery_fee),
+        "minimum_order_for_free_delivery": float(s.free_delivery_minimum_order),
+    }
 
 
 @router.get("/payments")
 def get_payments(_: CurrentAdmin, db: Session = Depends(get_db)):
-    return ok(_payments_list(db))
+    return ok(_payments_payload(db))
 
 
 @router.put("/payments")
-def put_payments(body: list[dict], _: CurrentAdmin, db: Session = Depends(get_db)):
-    for item in body:
-        mid = item.get("payment_method") or item.get("method")
-        if not mid:
-            continue
-        r = db.query(PaymentSetting).filter(PaymentSetting.payment_method == mid).first()
-        if not r:
-            r = PaymentSetting(payment_method=mid)
-            db.add(r)
-            db.flush()
-        if "is_enabled" in item:
-            r.is_enabled = item["is_enabled"]
-        if "display_name" in item:
-            r.display_name = item["display_name"]
-        if "processing_fee_percent" in item:
-            r.processing_fee_percent = item["processing_fee_percent"]
-        if "min_order_amount" in item:
-            r.min_order_amount = item["min_order_amount"]
+def put_payments(body: PaymentsSettingsBody, _: CurrentAdmin, db: Session = Depends(get_db)):
+    s = _store_for_payments(db)
+    data = body.model_dump(exclude_unset=True)
+    if "tax_rate" in data:
+        s.tax_rate = data["tax_rate"]
+    if "delivery_fee" in data:
+        s.delivery_fee = data["delivery_fee"]
+    if "minimum_order_for_free_delivery" in data:
+        s.free_delivery_minimum_order = data["minimum_order_for_free_delivery"]
     db.commit()
-    return ok(_payments_list(db))
+    db.refresh(s)
+    return ok(_payments_payload(db))

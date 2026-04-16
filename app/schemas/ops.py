@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 
 class InventoryCreate(BaseModel):
@@ -83,17 +83,34 @@ class StoreSettingsBody(BaseModel):
     email: str | None = None
     website: str | None = None
     logo_url: str | None = None
-    tax_rate: float | None = None
     currency: str | None = None
     currency_symbol: str | None = None
     timezone: str | None = None
 
 
 class BusinessHourItem(BaseModel):
-    day: str
-    is_open: bool = True
-    open_time: str = "10:00"
-    close_time: str = "22:00"
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    day: str = Field(validation_alias=AliasChoices("day", "dayOfWeek", "day_of_week"))
+    is_open: bool = Field(default=True, validation_alias=AliasChoices("is_open", "isOpen"))
+    open_time: str = Field(default="10:00", validation_alias=AliasChoices("open_time", "openTime"))
+    close_time: str = Field(default="22:00", validation_alias=AliasChoices("close_time", "closeTime"))
+
+    @field_validator("day", mode="before")
+    @classmethod
+    def normalize_day(cls, v: object) -> str:
+        if isinstance(v, str):
+            return v.strip().lower()
+        return str(v).strip().lower()
+
+
+class PaymentsSettingsBody(BaseModel):
+    tax_rate: float | None = None
+    delivery_fee: float | None = None
+    minimum_order_for_free_delivery: float | None = Field(
+        default=None,
+        description="Subtotal at or above this waives delivery fee; 0 disables free-delivery threshold.",
+    )
 
 
 class ReportExportBody(BaseModel):

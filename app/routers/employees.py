@@ -249,7 +249,7 @@ def put_schedule(employee_id: int, body: EmployeeScheduleBody, _: CurrentAdmin, 
     return ok(_emp_dict(e))
 
 
-@router.delete("/{employee_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{employee_id}")
 def deactivate_employee(employee_id: int, _: CurrentAdmin, db: Session = Depends(get_db)):
     e = db.get(Employee, employee_id)
     if not e:
@@ -259,4 +259,5 @@ def deactivate_employee(employee_id: int, _: CurrentAdmin, db: Session = Depends
         )
     e.status = EmployeeStatus.inactive
     db.commit()
-    return None
+    db.refresh(e)
+    return ok({"id": e.id, "status": e.status.value})
