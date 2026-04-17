@@ -53,7 +53,7 @@ class SubcategoryCreate(BaseModel):
 
 class ToppingCreate(BaseModel):
     name: str
-    category: str
+    category_id: int
     price: float
     is_available: bool = True
     sort_order: int = 0

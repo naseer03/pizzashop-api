@@ -43,13 +43,6 @@ class DayOfWeek(str, enum.Enum):
     sunday = "sunday"
 
 
-class ToppingCategory(str, enum.Enum):
-    veggies = "veggies"
-    meats = "meats"
-    cheese = "cheese"
-    sauce = "sauce"
-
-
 class SizeName(str, enum.Enum):
     small = "small"
     medium = "medium"
@@ -291,7 +284,7 @@ class Topping(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    category: Mapped[ToppingCategory] = mapped_column(Enum(ToppingCategory), nullable=False)
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
     price: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
     is_available: Mapped[bool] = mapped_column(Boolean, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)

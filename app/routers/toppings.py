@@ -5,18 +5,22 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import CurrentAdmin
-from app.models import Topping, ToppingCategory
+from app.models import Category, Topping
 from app.schemas.menu import AvailabilityPatch, ToppingCreate
 from app.utils.responses import err, ok
 
 router = APIRouter(prefix="/toppings", tags=["toppings"])
 
 
-def _t_dict(t: Topping) -> dict:
+def _t_dict(db: Session, t: Topping) -> dict:
+    cat = db.get(Category, t.category_id)
     return {
         "id": t.id,
         "name": t.name,
-        "category": t.category.value,
+        "category": {
+            "id": cat.id if cat else t.category_id,
+            "name": cat.name if cat else "",
+        },
         "price": float(t.price),
         "is_available": t.is_available,
         "sort_order": t.sort_order,
@@ -27,18 +31,15 @@ def _t_dict(t: Topping) -> dict:
 def list_toppings(
     _: CurrentAdmin,
     db: Session = Depends(get_db),
-    category: Annotated[str | None, Query()] = None,
+    category_id: Annotated[int | None, Query()] = None,
     is_available: Annotated[bool | None, Query()] = None,
 ):
     q = db.query(Topping).order_by(Topping.sort_order, Topping.id)
-    if category:
-        try:
-            q = q.filter(Topping.category == ToppingCategory(category))
-        except ValueError:
-            pass
+    if category_id is not None:
+        q = q.filter(Topping.category_id == category_id)
     if is_available is not None:
         q = q.filter(Topping.is_available == is_available)
-    return ok([_t_dict(t) for t in q.all()])
+    return ok([_t_dict(db, t) for t in q.all()])
 
 
 @router.get("/{topping_id}")
@@ -49,21 +50,20 @@ def get_topping(topping_id: int, _: CurrentAdmin, db: Session = Depends(get_db))
             status_code=status.HTTP_404_NOT_FOUND,
             detail=err("RESOURCE_NOT_FOUND", "Topping not found"),
         )
-    return ok(_t_dict(t))
+    return ok(_t_dict(db, t))
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_topping(body: ToppingCreate, _: CurrentAdmin, db: Session = Depends(get_db)):
-    try:
-        cat = ToppingCategory(body.category)
-    except ValueError:
+    cat = db.get(Category, body.category_id)
+    if not cat:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=err("VALIDATION_ERROR", "Invalid topping category"),
-        ) from None
+            detail=err("VALIDATION_ERROR", "Invalid category_id"),
+        )
     t = Topping(
         name=body.name,
-        category=cat,
+        category_id=body.category_id,
         price=body.price,
         is_available=body.is_available,
         sort_order=body.sort_order,
@@ -71,7 +71,7 @@ def create_topping(body: ToppingCreate, _: CurrentAdmin, db: Session = Depends(g
     db.add(t)
     db.commit()
     db.refresh(t)
-    return ok(_t_dict(t))
+    return ok(_t_dict(db, t))
 
 
 @router.put("/{topping_id}")
@@ -82,20 +82,20 @@ def update_topping(topping_id: int, body: ToppingCreate, _: CurrentAdmin, db: Se
             status_code=status.HTTP_404_NOT_FOUND,
             detail=err("RESOURCE_NOT_FOUND", "Topping not found"),
         )
-    try:
-        t.category = ToppingCategory(body.category)
-    except ValueError:
+    cat = db.get(Category, body.category_id)
+    if not cat:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=err("VALIDATION_ERROR", "Invalid topping category"),
-        ) from None
+            detail=err("VALIDATION_ERROR", "Invalid category_id"),
+        )
+    t.category_id = body.category_id
     t.name = body.name
     t.price = body.price
     t.is_available = body.is_available
     t.sort_order = body.sort_order
     db.commit()
     db.refresh(t)
-    return ok(_t_dict(t))
+    return ok(_t_dict(db, t))
 
 
 @router.patch("/{topping_id}/availability")
@@ -111,7 +111,7 @@ def patch_topping_availability(
     t.is_available = body.is_available
     db.commit()
     db.refresh(t)
-    return ok(_t_dict(t))
+    return ok(_t_dict(db, t))
 
 
 @router.delete("/{topping_id}", status_code=status.HTTP_204_NO_CONTENT)

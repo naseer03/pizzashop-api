@@ -32,7 +32,6 @@ from app.models.entities import (
     StoreSetting,
     Subcategory,
     Topping,
-    ToppingCategory,
 )
 
 __all__ = [
@@ -69,5 +68,4 @@ __all__ = [
     "StoreSetting",
     "Subcategory",
     "Topping",
-    "ToppingCategory",
 ]

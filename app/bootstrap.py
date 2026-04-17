@@ -22,7 +22,6 @@ from app.models.entities import (
     StoreSetting,
     Subcategory,
     Topping,
-    ToppingCategory,
 )
 
 
@@ -146,12 +145,8 @@ def seed_if_empty(db: Session) -> None:
     db.add(sub)
     db.flush()
 
-    db.add(
-        Topping(name="Pepperoni", category=ToppingCategory.meats, price=1.5, sort_order=1)
-    )
-    db.add(
-        Topping(name="Mushrooms", category=ToppingCategory.veggies, price=0.75, sort_order=2)
-    )
+    db.add(Topping(name="Pepperoni", category_id=cat_pizza.id, price=1.5, sort_order=1))
+    db.add(Topping(name="Mushrooms", category_id=cat_pizza.id, price=0.75, sort_order=2))
 
     item = MenuItem(
         name="Margherita Pizza",
