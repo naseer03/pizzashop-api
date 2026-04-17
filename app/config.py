@@ -13,6 +13,14 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
     refresh_token_expire_days: int = 7
     cors_origins: str = "*"
+    # Local menu image uploads (served under media_url_prefix).
+    media_root: str = Field(default="data/uploads", validation_alias="MEDIA_ROOT")
+    media_url_prefix: str = Field(
+        default="/v1/media/menu-items",
+        validation_alias="MEDIA_URL_PREFIX",
+        description="Public URL path prefix for saved menu item images.",
+    )
+    max_upload_mb: int = Field(default=5, ge=1, le=50, validation_alias="MAX_UPLOAD_MB")
 
 
 settings = Settings()

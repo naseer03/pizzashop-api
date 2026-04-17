@@ -14,7 +14,6 @@ class MenuItemCreate(BaseModel):
     subcategory_id: int | None = None
     base_price: float
     sizes: list[MenuSizeIn] = Field(default_factory=list)
-    image_url: str | None = None
     is_available: bool = True
     is_featured: bool = False
     preparation_time_minutes: int = 15
@@ -29,7 +28,6 @@ class MenuItemUpdate(BaseModel):
     subcategory_id: int | None = None
     base_price: float | None = None
     sizes: list[MenuSizeIn] | None = None
-    image_url: str | None = None
     is_available: bool | None = None
     is_featured: bool | None = None
     preparation_time_minutes: int | None = None

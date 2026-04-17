@@ -1,9 +1,11 @@
 import logging
 import traceback
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.bootstrap import seed_if_empty
 from app.core.exception_handlers import register_exception_handlers
@@ -57,13 +59,22 @@ Errors use `{ "success": false, "error": { "code", "message", ... } }` with appr
 
 ## Business hours
 - **`PUT /v1/settings/business-hours`** — Send `{ "hours": [ { "day", "open_time", "close_time" }, … ] }`. Use the same `open_time` and `close_time` for a closed day.
+
+## Menu item images
+- Create/update with **`POST /v1/menu-items`** and **`PUT /v1/menu-items/{id}`** using **`multipart/form-data`**.
+- Include image in the same request using file field **`image`**.
+- For `sizes`, send a JSON array string (e.g. `[{"size":"small","price":10.99,"is_default":false}]`).
+- `image_url` is returned in responses and served from **`MEDIA_URL_PREFIX`**.
 """
 
 OPENAPI_TAGS_METADATA = [
     {"name": "auth", "description": "Admin login, refresh token, profile, logout, and change password."},
     {"name": "dashboard", "description": "Summary KPIs and overview widgets."},
     {"name": "orders", "description": "Order lifecycle, search, status updates, and line items."},
-    {"name": "menu-items", "description": "Menu products, sizes, modifiers, and pricing."},
+    {
+        "name": "menu-items",
+        "description": "Menu products, sizes, and pricing. Create/update accept multipart with optional `image` upload; `image_url` in responses is the public URL.",
+    },
     {"name": "categories", "description": "Categories and subcategories for the menu."},
     {"name": "toppings", "description": "Toppings catalog and availability."},
     {"name": "crusts", "description": "Crust types and options."},
@@ -82,6 +93,7 @@ OPENAPI_TAGS_METADATA = [
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    Path(settings.media_root).resolve().joinpath("menu_items").mkdir(parents=True, exist_ok=True)
     try:
         Base.metadata.create_all(bind=engine)
         db = SessionLocal()
@@ -154,6 +166,14 @@ app.include_router(employees.router, prefix=v1_prefix)
 app.include_router(roles.router, prefix=v1_prefix)
 app.include_router(settings_router.router, prefix=v1_prefix)
 app.include_router(reports.router, prefix=v1_prefix)
+
+_menu_media_dir = Path(settings.media_root).resolve() / "menu_items"
+_menu_media_dir.mkdir(parents=True, exist_ok=True)
+app.mount(
+    settings.media_url_prefix.rstrip("/"),
+    StaticFiles(directory=str(_menu_media_dir)),
+    name="menu_item_media",
+)
 
 
 @app.get("/health", tags=["health"])
