@@ -88,6 +88,14 @@ class StoreSettingsBody(BaseModel):
     timezone: str | None = None
 
 
+class StoreSettingsCreate(StoreSettingsBody):
+    """Body for POST /settings/store — same fields as update, but store_name is required."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    store_name: str = Field(min_length=1, max_length=200)
+
+
 class BusinessHourItem(BaseModel):
     """One row of store hours (used inside PUT /settings/business-hours)."""
 
@@ -137,6 +145,18 @@ class PaymentsSettingsBody(BaseModel):
     delivery_fee: float | None = None
     minimum_order_for_free_delivery: float | None = Field(
         default=None,
+        description="Subtotal at or above this waives delivery fee; 0 disables free-delivery threshold.",
+    )
+
+
+class PaymentsSettingsCreate(PaymentsSettingsBody):
+    """Body for POST /settings/payments — same fields as update, but all are required."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tax_rate: float
+    delivery_fee: float
+    minimum_order_for_free_delivery: float = Field(
         description="Subtotal at or above this waives delivery fee; 0 disables free-delivery threshold.",
     )
 

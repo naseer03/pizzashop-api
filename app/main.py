@@ -33,32 +33,50 @@ REST API for the PizzaHub point-of-sale admin backend.
 ## Base URL
 All versioned routes are under **`/v1`**. Example: `GET /v1/auth/me`.
 
+Interactive docs: **`/docs`** (Swagger UI), **`/redoc`** (ReDoc), **`/openapi.json`** (OpenAPI schema).
+
 ## Authentication
 1. Call **`POST /v1/auth/login`** with email and password.
 2. Copy `data.access_token` from the response.
-3. Click **Authorize** in Swagger UI, enter `Bearer <token>` or paste the token (Swagger adds `Bearer` if you use the lock flow).
+3. In Swagger UI, click **Authorize** and enter a value. Use either the raw JWT or the form `Bearer <token>` depending on your client; the UI typically sends `Authorization: Bearer …`.
 4. Protected routes require a valid JWT access token.
 
 ## Response shape
 Successful responses wrap payloads as `{ "success": true, "data": ... }`.
 Errors use `{ "success": false, "error": { "code", "message", ... } }` with appropriate HTTP status codes.
+
+## Store settings (singleton)
+- **`POST /v1/settings/store`** — Create the initial store row when none exists (**201**). Returns **409** if settings were already created; use **PUT** to change them.
+- **`PUT /v1/settings/store`** — Update existing store fields (partial body allowed).
+- **`GET /v1/settings/store`** — Read current store profile.
+
+## Payment settings (singleton)
+- **`POST /v1/settings/payments`** — Create initial payment settings when none exist (**201**). Returns **409** if already present; use **PUT** to update.
+- **`PUT /v1/settings/payments`** — Update tax, delivery fee, and free-delivery threshold.
+- **`GET /v1/settings/payments`** — Read current payment settings.
+
+## Business hours
+- **`PUT /v1/settings/business-hours`** — Send `{ "hours": [ { "day", "open_time", "close_time" }, … ] }`. Use the same `open_time` and `close_time` for a closed day.
 """
 
 OPENAPI_TAGS_METADATA = [
-    {"name": "auth", "description": "Admin login, token refresh, profile, and password."},
+    {"name": "auth", "description": "Admin login, refresh token, profile, logout, and change password."},
     {"name": "dashboard", "description": "Summary KPIs and overview widgets."},
-    {"name": "orders", "description": "Order lifecycle, search, and updates."},
-    {"name": "menu-items", "description": "Menu products, sizes, and pricing."},
-    {"name": "categories", "description": "Categories and subcategories."},
-    {"name": "toppings", "description": "Toppings catalog."},
+    {"name": "orders", "description": "Order lifecycle, search, status updates, and line items."},
+    {"name": "menu-items", "description": "Menu products, sizes, modifiers, and pricing."},
+    {"name": "categories", "description": "Categories and subcategories for the menu."},
+    {"name": "toppings", "description": "Toppings catalog and availability."},
     {"name": "crusts", "description": "Crust types and options."},
-    {"name": "inventory", "description": "Stock, SKUs, and inventory movements."},
-    {"name": "customers", "description": "Customer records and loyalty."},
-    {"name": "employees", "description": "Staff, roles on shift, and schedules."},
-    {"name": "roles", "description": "RBAC roles and permissions."},
-    {"name": "settings", "description": "Store profile, business hours, payments, and notifications."},
-    {"name": "reports", "description": "Exports and reporting."},
-    {"name": "health", "description": "Liveness probe (no auth)."},
+    {"name": "inventory", "description": "Stock levels, SKUs, and inventory movement logs."},
+    {"name": "customers", "description": "Customer records, search, and loyalty points."},
+    {"name": "employees", "description": "Staff accounts, schedules, and status."},
+    {"name": "roles", "description": "RBAC roles and permission sets."},
+    {
+        "name": "settings",
+        "description": "Store profile (GET/POST/PUT store), business hours, payments/tax, and notification toggles.",
+    },
+    {"name": "reports", "description": "Report generation and exports."},
+    {"name": "health", "description": "Liveness probe; no authentication required."},
 ]
 
 
@@ -79,16 +97,30 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="PizzaHub POS API",
+    summary="POS admin backend for PizzaHub.",
     description=API_DESCRIPTION,
     version="1.0.0",
     openapi_tags=OPENAPI_TAGS_METADATA,
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    contact={"name": "PizzaHub API"},
+    license_info={"name": "Proprietary"},
+    servers=[
+        {
+            "url": "/",
+            "description": "Current host (paths already include `/v1/...`).",
+        },
+    ],
     swagger_ui_parameters={
         "persistAuthorization": True,
         "displayRequestDuration": True,
         "filter": True,
+        "tryItOutEnabled": True,
+        "docExpansion": "list",
+        "defaultModelsExpandDepth": 2,
+        "defaultModelExpandDepth": 4,
         "syntaxHighlight.theme": "monokai",
     },
 )

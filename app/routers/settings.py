@@ -7,7 +7,13 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import CurrentAdmin
 from app.models import BusinessHour, DayOfWeek, NotificationSetting, StoreSetting
-from app.schemas.ops import BusinessHoursUpdateBody, PaymentsSettingsBody, StoreSettingsBody
+from app.schemas.ops import (
+    BusinessHoursUpdateBody,
+    PaymentsSettingsCreate,
+    PaymentsSettingsBody,
+    StoreSettingsBody,
+    StoreSettingsCreate,
+)
 from app.utils.responses import err, ok
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -58,7 +64,7 @@ def _business_hours_list(db: Session) -> list[dict[str, Any]]:
     ]
 
 
-@router.get("/store")
+@router.get("/store", summary="Get store settings")
 def get_store(_: CurrentAdmin, db: Session = Depends(get_db)):
     s = db.query(StoreSetting).first()
     if not s:
@@ -69,7 +75,43 @@ def get_store(_: CurrentAdmin, db: Session = Depends(get_db)):
     return ok(_store_dict(s))
 
 
-@router.put("/store")
+@router.post(
+    "/store",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create store settings",
+    description=(
+        "Creates the first `store_settings` row when the table is empty (HTTP **201**). "
+        "If a row already exists, returns **409** — use **PUT /v1/settings/store** to update."
+    ),
+    response_description="Created store profile (same shape as GET).",
+    responses={
+        201: {"description": "Store settings row created."},
+        409: {"description": "Store settings already exist; use PUT to update."},
+    },
+)
+def post_store(
+    _: CurrentAdmin,
+    db: Session = Depends(get_db),
+    body: StoreSettingsCreate = Body(...),
+):
+    if db.query(StoreSetting).first() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=err(
+                "RESOURCE_CONFLICT",
+                "Store settings already exist. Use PUT /v1/settings/store to update them.",
+            ),
+        )
+    s = StoreSetting()
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(s, k, v)
+    db.add(s)
+    db.commit()
+    db.refresh(s)
+    return ok(_store_dict(s))
+
+
+@router.put("/store", summary="Update store settings")
 def put_store(body: StoreSettingsBody, _: CurrentAdmin, db: Session = Depends(get_db)):
     s = db.query(StoreSetting).first()
     if not s:
@@ -202,12 +244,50 @@ def _payments_payload(db: Session) -> dict[str, Any]:
     }
 
 
-@router.get("/payments")
+@router.get("/payments", summary="Get payment settings")
 def get_payments(_: CurrentAdmin, db: Session = Depends(get_db)):
     return ok(_payments_payload(db))
 
 
-@router.put("/payments")
+@router.post(
+    "/payments",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create payment settings",
+    description=(
+        "Creates payment settings when `store_settings` does not exist yet (HTTP **201**). "
+        "If payment settings already exist, returns **409** — use **PUT /v1/settings/payments** to update."
+    ),
+    response_description="Created payment settings.",
+    responses={
+        201: {"description": "Payment settings created."},
+        409: {"description": "Payment settings already exist; use PUT to update."},
+    },
+)
+def post_payments(
+    _: CurrentAdmin,
+    db: Session = Depends(get_db),
+    body: PaymentsSettingsCreate = Body(...),
+):
+    if db.query(StoreSetting).first() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=err(
+                "RESOURCE_CONFLICT",
+                "Payment settings already exist. Use PUT /v1/settings/payments to update them.",
+            ),
+        )
+
+    s = StoreSetting()
+    s.tax_rate = body.tax_rate
+    s.delivery_fee = body.delivery_fee
+    s.free_delivery_minimum_order = body.minimum_order_for_free_delivery
+    db.add(s)
+    db.commit()
+    db.refresh(s)
+    return ok(_payments_payload(db))
+
+
+@router.put("/payments", summary="Update payment settings")
 def put_payments(body: PaymentsSettingsBody, _: CurrentAdmin, db: Session = Depends(get_db)):
     s = _store_for_payments(db)
     data = body.model_dump(exclude_unset=True)
