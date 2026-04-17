@@ -1,4 +1,4 @@
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class InventoryCreate(BaseModel):
@@ -89,12 +89,13 @@ class StoreSettingsBody(BaseModel):
 
 
 class BusinessHourItem(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+    """One row of store hours (used inside PUT /settings/business-hours)."""
 
-    day: str = Field(validation_alias=AliasChoices("day", "dayOfWeek", "day_of_week"))
-    is_open: bool = Field(default=True, validation_alias=AliasChoices("is_open", "isOpen"))
-    open_time: str = Field(default="10:00", validation_alias=AliasChoices("open_time", "openTime"))
-    close_time: str = Field(default="22:00", validation_alias=AliasChoices("close_time", "closeTime"))
+    model_config = ConfigDict(extra="forbid")
+
+    day: str = Field(description="Day of week, e.g. monday, tuesday (lowercase enum value).")
+    open_time: str = Field(description="Opening time HH:MM (24h).")
+    close_time: str = Field(description="Closing time HH:MM (24h). Match open_time for a closed day.")
 
     @field_validator("day", mode="before")
     @classmethod
@@ -102,6 +103,33 @@ class BusinessHourItem(BaseModel):
         if isinstance(v, str):
             return v.strip().lower()
         return str(v).strip().lower()
+
+
+class BusinessHoursUpdateBody(BaseModel):
+    """Request body for PUT /settings/business-hours (object wrapper so OpenAPI / Swagger UI show fields correctly)."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "example": {
+                "hours": [
+                    {"day": "monday", "open_time": "10:00", "close_time": "22:00"},
+                    {"day": "tuesday", "open_time": "10:00", "close_time": "22:00"},
+                    {"day": "wednesday", "open_time": "10:00", "close_time": "22:00"},
+                    {"day": "thursday", "open_time": "10:00", "close_time": "22:00"},
+                    {"day": "friday", "open_time": "10:00", "close_time": "23:00"},
+                    {"day": "saturday", "open_time": "10:00", "close_time": "23:00"},
+                    {"day": "sunday", "open_time": "11:00", "close_time": "21:00"},
+                ]
+            }
+        },
+    )
+
+    hours: list[BusinessHourItem] = Field(
+        ...,
+        min_length=1,
+        description="List of day schedules. Each entry uses day, open_time, and close_time only.",
+    )
 
 
 class PaymentsSettingsBody(BaseModel):

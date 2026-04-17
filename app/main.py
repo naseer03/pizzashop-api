@@ -2,12 +2,11 @@ import logging
 import traceback
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.exceptions import RequestValidationError
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
 from app.bootstrap import seed_if_empty
+from app.core.exception_handlers import register_exception_handlers
 from app.config import settings
 from app.database import Base, SessionLocal, engine
 from app.routers import (
@@ -25,9 +24,42 @@ from app.routers import (
     settings as settings_router,
     toppings,
 )
-from app.utils.responses import err
 
 log = logging.getLogger("uvicorn.error")
+
+API_DESCRIPTION = """
+REST API for the PizzaHub point-of-sale admin backend.
+
+## Base URL
+All versioned routes are under **`/v1`**. Example: `GET /v1/auth/me`.
+
+## Authentication
+1. Call **`POST /v1/auth/login`** with email and password.
+2. Copy `data.access_token` from the response.
+3. Click **Authorize** in Swagger UI, enter `Bearer <token>` or paste the token (Swagger adds `Bearer` if you use the lock flow).
+4. Protected routes require a valid JWT access token.
+
+## Response shape
+Successful responses wrap payloads as `{ "success": true, "data": ... }`.
+Errors use `{ "success": false, "error": { "code", "message", ... } }` with appropriate HTTP status codes.
+"""
+
+OPENAPI_TAGS_METADATA = [
+    {"name": "auth", "description": "Admin login, token refresh, profile, and password."},
+    {"name": "dashboard", "description": "Summary KPIs and overview widgets."},
+    {"name": "orders", "description": "Order lifecycle, search, and updates."},
+    {"name": "menu-items", "description": "Menu products, sizes, and pricing."},
+    {"name": "categories", "description": "Categories and subcategories."},
+    {"name": "toppings", "description": "Toppings catalog."},
+    {"name": "crusts", "description": "Crust types and options."},
+    {"name": "inventory", "description": "Stock, SKUs, and inventory movements."},
+    {"name": "customers", "description": "Customer records and loyalty."},
+    {"name": "employees", "description": "Staff, roles on shift, and schedules."},
+    {"name": "roles", "description": "RBAC roles and permissions."},
+    {"name": "settings", "description": "Store profile, business hours, payments, and notifications."},
+    {"name": "reports", "description": "Exports and reporting."},
+    {"name": "health", "description": "Liveness probe (no auth)."},
+]
 
 
 @asynccontextmanager
@@ -47,10 +79,18 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="PizzaHub POS API",
+    description=API_DESCRIPTION,
     version="1.0.0",
+    openapi_tags=OPENAPI_TAGS_METADATA,
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
+    swagger_ui_parameters={
+        "persistAuthorization": True,
+        "displayRequestDuration": True,
+        "filter": True,
+        "syntaxHighlight.theme": "monokai",
+    },
 )
 
 origins = (
@@ -66,28 +106,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-@app.exception_handler(HTTPException)
-async def http_exception_handler(_: Request, exc: HTTPException):
-    if isinstance(exc.detail, dict) and exc.detail.get("success") is False:
-        return JSONResponse(status_code=exc.status_code, content=exc.detail)
-    if isinstance(exc.detail, dict):
-        return JSONResponse(status_code=exc.status_code, content=exc.detail)
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
-
-
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(_: Request, exc: RequestValidationError):
-    details: dict = {}
-    for e in exc.errors():
-        loc = ".".join(str(x) for x in e.get("loc", []) if x != "body")
-        msg = e.get("msg", "")
-        details.setdefault(loc or "request", []).append(msg)
-    return JSONResponse(
-        status_code=422,
-        content=err("VALIDATION_ERROR", "The given data was invalid.", details=details),
-    )
-
+register_exception_handlers(app)
 
 v1_prefix = "/v1"
 app.include_router(auth.router, prefix=v1_prefix)
@@ -105,6 +124,6 @@ app.include_router(settings_router.router, prefix=v1_prefix)
 app.include_router(reports.router, prefix=v1_prefix)
 
 
-@app.get("/health")
+@app.get("/health", tags=["health"])
 def health():
     return {"status": "ok"}

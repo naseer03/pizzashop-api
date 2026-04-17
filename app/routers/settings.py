@@ -2,13 +2,12 @@ from datetime import time
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
-from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import CurrentAdmin
 from app.models import BusinessHour, DayOfWeek, NotificationSetting, StoreSetting
-from app.schemas.ops import BusinessHourItem, PaymentsSettingsBody, StoreSettingsBody
+from app.schemas.ops import BusinessHoursUpdateBody, PaymentsSettingsBody, StoreSettingsBody
 from app.utils.responses import err, ok
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -90,30 +89,6 @@ def get_business_hours(_: CurrentAdmin, db: Session = Depends(get_db)):
     return ok(_business_hours_list(db))
 
 
-def _unwrap_business_hours_json(raw: Any) -> list[Any]:
-    if isinstance(raw, list):
-        return raw
-    if isinstance(raw, dict):
-        # Common wrappers:
-        # - { data: [...] }
-        # - { success: true, data: [...] }
-        # - { success: true, data: { data: [...] } }
-        # - { business_hours: [...] } / { businessHours: [...] } / { hours: [...] }
-        for key in ("data", "businessHours", "business_hours", "hours"):
-            v = raw.get(key)
-            if isinstance(v, list):
-                return v
-            if isinstance(v, dict):
-                try:
-                    return _unwrap_business_hours_json(v)
-                except ValueError:
-                    pass
-    raise ValueError(
-        "Send a JSON array of hours, or an object with a list under "
-        "data, businessHours, business_hours, or hours."
-    )
-
-
 def _hh_mm(s: str) -> tuple[int, int]:
     parts = s.strip().split(":")
     if len(parts) < 2:
@@ -128,27 +103,27 @@ def _hh_mm(s: str) -> tuple[int, int]:
 def put_business_hours(
     _: CurrentAdmin,
     db: Session = Depends(get_db),
-    body: Any = Body(...),
+    body: BusinessHoursUpdateBody = Body(
+        ...,
+        openapi_examples={
+            "full_week": {
+                "summary": "Typical week",
+                "value": {
+                    "hours": [
+                        {"day": "monday", "open_time": "10:00", "close_time": "22:00"},
+                        {"day": "tuesday", "open_time": "10:00", "close_time": "22:00"},
+                        {"day": "wednesday", "open_time": "10:00", "close_time": "22:00"},
+                        {"day": "thursday", "open_time": "10:00", "close_time": "22:00"},
+                        {"day": "friday", "open_time": "10:00", "close_time": "23:00"},
+                        {"day": "saturday", "open_time": "10:00", "close_time": "23:00"},
+                        {"day": "sunday", "open_time": "11:00", "close_time": "21:00"},
+                    ]
+                },
+            }
+        },
+    ),
 ):
-    try:
-        payload = _unwrap_business_hours_json(body)
-        items = TypeAdapter(list[BusinessHourItem]).validate_python(payload)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=err("VALIDATION_ERROR", str(e)),
-        ) from None
-    except ValidationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=err(
-                "VALIDATION_ERROR",
-                "Invalid business hours entry.",
-                details={"errors": e.errors(include_url=False)},
-            ),
-        ) from None
-
-    for item in items:
+    for item in body.hours:
         try:
             dow = DayOfWeek(item.day)
         except ValueError:
@@ -165,7 +140,6 @@ def put_business_hours(
             b = BusinessHour(day_of_week=dow)
             db.add(b)
             db.flush()
-        b.is_open = item.is_open
         try:
             oh, om = _hh_mm(item.open_time)
             ch, cm = _hh_mm(item.close_time)
@@ -176,6 +150,7 @@ def put_business_hours(
             ) from None
         b.open_time = time(oh, om)
         b.close_time = time(ch, cm)
+        b.is_open = (oh, om) != (ch, cm)
     db.commit()
     return ok(_business_hours_list(db))
 
