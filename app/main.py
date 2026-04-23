@@ -9,10 +9,12 @@ from fastapi.staticfiles import StaticFiles
 
 from app.bootstrap import seed_if_empty
 from app.core.exception_handlers import register_exception_handlers
+from app.core.schema_patches import apply_cashier_schema_patches
 from app.config import settings
 from app.database import Base, SessionLocal, engine
 from app.routers import (
     auth,
+    cashier,
     categories,
     crusts,
     customers,
@@ -87,6 +89,13 @@ OPENAPI_TAGS_METADATA = [
         "description": "Store profile (GET/POST/PUT store), business hours, payments/tax, and notification toggles.",
     },
     {"name": "reports", "description": "Report generation and exports."},
+    {
+        "name": "cashier-auth",
+        "description": "Employee cashier login (JWT subject `emp:{id}`) for POS terminals.",
+    },
+    {"name": "cashier-menu", "description": "Read-optimized menu and category payloads for the cashier UI."},
+    {"name": "cashier-orders", "description": "Create/edit orders, payments, holds, and receipts at the register."},
+    {"name": "cashier-kitchen", "description": "WebSocket channel for kitchen display apps."},
     {"name": "health", "description": "Liveness probe; no authentication required."},
 ]
 
@@ -96,6 +105,7 @@ async def lifespan(_: FastAPI):
     Path(settings.media_root).resolve().joinpath("menu_items").mkdir(parents=True, exist_ok=True)
     try:
         Base.metadata.create_all(bind=engine)
+        apply_cashier_schema_patches(engine)
         db = SessionLocal()
         try:
             seed_if_empty(db)
@@ -166,6 +176,7 @@ app.include_router(employees.router, prefix=v1_prefix)
 app.include_router(roles.router, prefix=v1_prefix)
 app.include_router(settings_router.router, prefix=v1_prefix)
 app.include_router(reports.router, prefix=v1_prefix)
+app.include_router(cashier.router, prefix=v1_prefix)
 
 _menu_media_dir = Path(settings.media_root).resolve() / "menu_items"
 _menu_media_dir.mkdir(parents=True, exist_ok=True)

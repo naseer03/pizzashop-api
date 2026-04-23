@@ -1,10 +1,11 @@
-from datetime import date, time
+from datetime import time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.security import hash_password
 from app.database import get_db
 from app.deps import CurrentAdmin
 from app.models import DayOfWeek, Employee, EmployeeSchedule, EmployeeStatus, Role
@@ -14,11 +15,8 @@ from app.utils.responses import err, ok
 router = APIRouter(prefix="/employees", tags=["employees"])
 
 
-def _parse_date(s: str) -> date:
-    return date.fromisoformat(s[:10])
-
-
-def _parse_time(s: str) -> time:
+def _parse_time(v: object) -> time:
+    s = v if isinstance(v, str) else "09:00"
     parts = s.split(":")
     h, m = int(parts[0]), int(parts[1]) if len(parts) > 1 else 0
     return time(h, m)
@@ -26,6 +24,11 @@ def _parse_time(s: str) -> time:
 
 def _emp_dict(e: Employee) -> dict:
     role = e.role
+    role_out = (
+        {"id": role.id, "name": role.name, "color": role.color}
+        if role is not None
+        else {"id": e.role_id, "name": "", "color": "#6B7280"}
+    )
     return {
         "id": e.id,
         "employee_code": e.employee_code,
@@ -34,9 +37,10 @@ def _emp_dict(e: Employee) -> dict:
         "email": e.email,
         "phone": e.phone,
         "avatar_url": e.avatar_url,
-        "role": {"id": role.id, "name": role.name, "color": role.color},
+        "role": role_out,
         "hourly_rate": float(e.hourly_rate),
         "status": e.status.value,
+        "has_password": bool(e.password_hash),
         "hire_date": e.hire_date.isoformat() if e.hire_date else None,
         "schedule": [
             {
@@ -129,11 +133,12 @@ def create_employee(body: EmployeeCreate, _: CurrentAdmin, db: Session = Depends
         phone=body.phone,
         role_id=body.role_id,
         hourly_rate=body.hourly_rate,
-        hire_date=_parse_date(body.hire_date),
-        date_of_birth=_parse_date(body.date_of_birth) if body.date_of_birth else None,
+        hire_date=body.hire_date,
+        date_of_birth=body.date_of_birth,
         address=body.address,
         emergency_contact_name=body.emergency_contact_name,
         emergency_contact_phone=body.emergency_contact_phone,
+        password_hash=hash_password(body.password) if body.password else None,
     )
     db.add(e)
     db.flush()
@@ -170,11 +175,13 @@ def update_employee(employee_id: int, body: EmployeeCreate, _: CurrentAdmin, db:
     e.phone = body.phone
     e.role_id = body.role_id
     e.hourly_rate = body.hourly_rate
-    e.hire_date = _parse_date(body.hire_date)
-    e.date_of_birth = _parse_date(body.date_of_birth) if body.date_of_birth else None
+    e.hire_date = body.hire_date
+    e.date_of_birth = body.date_of_birth
     e.address = body.address
     e.emergency_contact_name = body.emergency_contact_name
     e.emergency_contact_phone = body.emergency_contact_phone
+    if body.password is not None:
+        e.password_hash = hash_password(body.password) if body.password else None
     if body.schedule is not None:
         for s in e.schedules:
             db.delete(s)

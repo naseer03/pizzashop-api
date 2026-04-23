@@ -84,6 +84,7 @@ class OrderType(str, enum.Enum):
 
 class OrderStatus(str, enum.Enum):
     pending = "pending"
+    on_hold = "on_hold"
     confirmed = "confirmed"
     preparing = "preparing"
     ready = "ready"
@@ -178,6 +179,7 @@ class Employee(Base):
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(String(255))
     phone: Mapped[str | None] = mapped_column(String(20))
     avatar_url: Mapped[str | None] = mapped_column(String(500))
     role_id: Mapped[int] = mapped_column(ForeignKey("roles.id"), nullable=False)

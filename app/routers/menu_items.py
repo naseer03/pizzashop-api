@@ -9,8 +9,10 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import CurrentAdmin
-from app.models import Category, MenuItem, MenuItemSize, SizeName, Subcategory
+from app.models import Category, MenuItem, MenuItemSize, SizeName
 from app.schemas.menu import AvailabilityPatch, MenuItemCreate, MenuItemUpdate, MenuSizeIn
+from app.services.cashier_menu import invalidate_menu_cache
+from app.services.menu_payloads import menu_item_to_dict
 from app.utils.menu_images import save_menu_item_image, try_remove_stored_menu_image
 from app.utils.responses import err, ok
 from app.utils.slug import slugify
@@ -19,36 +21,7 @@ router = APIRouter(prefix="/menu-items", tags=["menu-items"])
 
 
 def _item_dict(db: Session, mi: MenuItem) -> dict:
-    cat = db.get(Category, mi.category_id)
-    sub = db.get(Subcategory, mi.subcategory_id) if mi.subcategory_id else None
-    sizes = [
-        {
-            "size": s.size_name.value,
-            "price": float(s.price),
-            "is_default": s.is_default,
-        }
-        for s in sorted(mi.sizes, key=lambda x: x.size_name.value)
-    ]
-    return {
-        "id": mi.id,
-        "name": mi.name,
-        "slug": mi.slug,
-        "description": mi.description,
-        "category": {
-            "id": cat.id if cat else mi.category_id,
-            "name": cat.name if cat else "",
-            "has_sizes": cat.has_sizes if cat else False,
-        },
-        "subcategory": ({"id": sub.id, "name": sub.name} if sub else None),
-        "base_price": float(mi.base_price),
-        "sizes": sizes,
-        "image_url": mi.image_url,
-        "is_available": mi.is_available,
-        "is_featured": mi.is_featured,
-        "preparation_time_minutes": mi.preparation_time_minutes,
-        "calories": mi.calories,
-        "allergens": mi.allergens,
-    }
+    return menu_item_to_dict(db, mi)
 
 
 def _parse_sizes_form(raw: str | None, *, required: bool) -> list[MenuSizeIn] | None:
@@ -214,6 +187,7 @@ async def create_menu_item(
         db.commit()
 
     db.refresh(mi)
+    invalidate_menu_cache(mi.id)
     return ok(_item_dict(db, mi))
 
 
@@ -312,6 +286,7 @@ async def update_menu_item(
 
     db.commit()
     db.refresh(mi)
+    invalidate_menu_cache(mi.id)
     return ok(_item_dict(db, mi))
 
 
@@ -326,6 +301,7 @@ def patch_availability(item_id: int, body: AvailabilityPatch, _: CurrentAdmin, d
     mi.is_available = body.is_available
     db.commit()
     db.refresh(mi)
+    invalidate_menu_cache(mi.id)
     return ok(_item_dict(db, mi))
 
 
@@ -338,6 +314,8 @@ def delete_menu_item(item_id: int, _: CurrentAdmin, db: Session = Depends(get_db
             detail=err("RESOURCE_NOT_FOUND", "Menu item not found"),
         )
     try_remove_stored_menu_image(mi.image_url)
+    iid = mi.id
     db.delete(mi)
     db.commit()
+    invalidate_menu_cache(iid)
     return None

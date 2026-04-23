@@ -88,6 +88,22 @@ def seed_if_empty(db: Session) -> None:
     for p in perm_objs:
         db.add(RolePermission(role_id=manager.id, permission_id=p.id))
 
+    cashier_perm_codes = {
+        "orders.view",
+        "orders.create",
+        "orders.update",
+        "orders.cancel",
+        "menu.view",
+    }
+    for p in perm_objs:
+        if p.code in cashier_perm_codes:
+            db.add(RolePermission(role_id=cashier.id, permission_id=p.id))
+
+    kitchen_perm_codes = {"orders.view", "orders.update"}
+    for p in perm_objs:
+        if p.code in kitchen_perm_codes:
+            db.add(RolePermission(role_id=kitchen.id, permission_id=p.id))
+
     db.add(StoreSetting(store_name="PizzaHub"))
 
     for d in DayOfWeek:
@@ -179,7 +195,22 @@ def seed_if_empty(db: Session) -> None:
         hourly_rate=22,
         hire_date=date(2023, 1, 15),
         status=EmployeeStatus.active,
+        password_hash=hash_password("manager123"),
     )
     db.add(emp)
+
+    cashier_user = Employee(
+        employee_code="EMP002",
+        first_name="Sarah",
+        last_name="Lee",
+        email="cashier@pizzahub.com",
+        phone="+1234567891",
+        role_id=cashier.id,
+        hourly_rate=18,
+        hire_date=date(2023, 2, 1),
+        status=EmployeeStatus.active,
+        password_hash=hash_password("cashier123"),
+    )
+    db.add(cashier_user)
 
     db.commit()

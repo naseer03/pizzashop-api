@@ -21,6 +21,12 @@ class Settings(BaseSettings):
         description="Public URL path prefix for saved menu item images.",
     )
     max_upload_mb: int = Field(default=5, ge=1, le=50, validation_alias="MAX_UPLOAD_MB")
+    redis_url: str | None = Field(
+        default=None,
+        validation_alias="REDIS_URL",
+        description="Optional redis:// URL for cashier menu caching and order queue helpers.",
+    )
+    cashier_menu_cache_ttl_seconds: int = Field(default=60, ge=5, le=3600, validation_alias="CASHIER_MENU_CACHE_TTL")
 
 
 settings = Settings()

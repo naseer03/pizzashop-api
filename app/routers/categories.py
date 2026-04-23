@@ -5,6 +5,7 @@ from app.database import get_db
 from app.deps import CurrentAdmin
 from app.models import Category, Subcategory
 from app.schemas.menu import CategoryCreate, SubcategoryCreate
+from app.services.cashier_menu import invalidate_menu_cache
 from app.utils.responses import err, ok
 from app.utils.slug import slugify
 
@@ -51,6 +52,7 @@ def create_category(body: CategoryCreate, _: CurrentAdmin, db: Session = Depends
     )
     db.add(c)
     db.commit()
+    invalidate_menu_cache()
     db.refresh(c)
     return ok(_cat_dict(c))
 
@@ -69,6 +71,7 @@ def update_category(category_id: int, body: CategoryCreate, _: CurrentAdmin, db:
     c.has_sizes = body.has_sizes
     c.display_order = body.display_order
     db.commit()
+    invalidate_menu_cache()
     db.refresh(c)
     return ok(_cat_dict(c))
 
@@ -83,6 +86,7 @@ def delete_category(category_id: int, _: CurrentAdmin, db: Session = Depends(get
         )
     db.delete(c)
     db.commit()
+    invalidate_menu_cache()
     return None
 
 
@@ -105,6 +109,7 @@ def create_subcategory(
     )
     db.add(s)
     db.commit()
+    invalidate_menu_cache()
     db.refresh(s)
     return ok(
         {
@@ -129,6 +134,7 @@ def update_subcategory(sub_id: int, body: SubcategoryCreate, _: CurrentAdmin, db
     s.slug = slugify(body.name)
     s.display_order = body.display_order
     db.commit()
+    invalidate_menu_cache()
     db.refresh(s)
     return ok(
         {
@@ -151,4 +157,5 @@ def delete_subcategory(sub_id: int, _: CurrentAdmin, db: Session = Depends(get_d
         )
     db.delete(s)
     db.commit()
+    invalidate_menu_cache()
     return None

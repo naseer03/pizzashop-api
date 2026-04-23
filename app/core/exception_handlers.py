@@ -91,8 +91,32 @@ async def integrity_error_handler(_: Request, exc: IntegrityError) -> JSONRespon
     return JSONResponse(status_code=409, content=body)
 
 
+def _mysql_errno_from_operational(exc: OperationalError) -> int | None:
+    orig = getattr(exc, "orig", None)
+    if orig is not None and getattr(orig, "args", None) and len(orig.args) >= 1:
+        try:
+            return int(orig.args[0])
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
 async def operational_error_handler(_: Request, exc: OperationalError) -> JSONResponse:
     log.error("Database operational error: %s", exc, exc_info=True)
+    errno = _mysql_errno_from_operational(exc)
+    # PyMySQL maps some server errors to OperationalError; schema drift is not "DB down".
+    if errno in (1054, 1146):
+        orig = getattr(exc, "orig", None)
+        hint = str(orig.args[1]) if orig is not None and len(orig.args) > 1 else str(exc)
+        return JSONResponse(
+            status_code=500,
+            content=err(
+                "DATABASE_SCHEMA_MISMATCH",
+                "The database schema does not match this API version (missing table or column). "
+                "Apply the SQL migrations for this project or recreate tables, then try again.",
+                details={"mysql_errno": errno, "hint": hint},
+            ),
+        )
     return JSONResponse(
         status_code=503,
         content=err(

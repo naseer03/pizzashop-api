@@ -1,3 +1,5 @@
+from datetime import date, datetime
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -38,6 +40,23 @@ class LoyaltyPatch(BaseModel):
     reason: str | None = None
 
 
+def _parse_employee_date_string(v: object, *, field: str) -> date:
+    """ISO YYYY-MM-DD or slash-separated M/D/YYYY (US) / D/M/YYYY."""
+    if isinstance(v, date):
+        return v
+    if not isinstance(v, str):
+        raise ValueError(f"{field} must be a date or string")
+    t = v.strip()
+    if not t:
+        raise ValueError(f"{field} is required")
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%m/%d/%y", "%d/%m/%y"):
+        try:
+            return datetime.strptime(t, fmt).date()
+        except ValueError:
+            continue
+    raise ValueError(f"Invalid {field} {t!r}. Use YYYY-MM-DD or M/D/YYYY.")
+
+
 class EmployeeCreate(BaseModel):
     first_name: str
     last_name: str
@@ -45,12 +64,45 @@ class EmployeeCreate(BaseModel):
     phone: str | None = None
     role_id: int
     hourly_rate: float = 0
-    hire_date: str
-    date_of_birth: str | None = None
+    hire_date: date
+    date_of_birth: date | None = None
     address: str | None = None
     emergency_contact_name: str | None = None
     emergency_contact_phone: str | None = None
     schedule: list[dict] | None = None
+    password: str | None = Field(
+        default=None,
+        max_length=128,
+        description="POS/cashier login password (stored hashed). Omit on PUT to leave unchanged.",
+    )
+
+    @field_validator("hire_date", mode="before")
+    @classmethod
+    def hire_date_flexible(cls, v: object) -> date:
+        return _parse_employee_date_string(v, field="hire_date")
+
+    @field_validator("date_of_birth", mode="before")
+    @classmethod
+    def date_of_birth_flexible(cls, v: object) -> date | None:
+        if v is None or v == "":
+            return None
+        return _parse_employee_date_string(v, field="date_of_birth")
+
+    @field_validator("password", mode="before")
+    @classmethod
+    def empty_password_to_none(cls, v: object) -> object:
+        if v == "":
+            return None
+        return v
+
+    @field_validator("password")
+    @classmethod
+    def password_min_length(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if len(v) < 8:
+            raise ValueError("password must be at least 8 characters when provided")
+        return v
 
 
 class EmployeeStatusPatch(BaseModel):
