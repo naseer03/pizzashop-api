@@ -72,6 +72,16 @@ class CashierPrincipal:
     permission_codes: set[str]
 
 
+def _fallback_role_permissions(employee: Employee) -> set[str]:
+    """Compatibility fallback for older DB seeds missing role_permissions rows."""
+    role_name = (employee.role.name or "").strip().lower() if employee.role else ""
+    if role_name in {"manager", "cashier"}:
+        return {"orders.view", "orders.create", "orders.update", "orders.cancel", "menu.view"}
+    if role_name in {"kitchen staff", "kitchen"}:
+        return {"orders.view", "orders.update"}
+    return set()
+
+
 def get_cashier_principal(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
     db: Annotated[Session, Depends(get_db)],
@@ -130,6 +140,8 @@ def get_cashier_principal(
             detail=err("AUTH_TOKEN_INVALID", "Employee not found or inactive"),
         )
     codes = {p.code for p in (employee.role.permissions or [])}
+    if not codes:
+        codes = _fallback_role_permissions(employee)
     return CashierPrincipal(employee=employee, permission_codes=codes)
 
 
