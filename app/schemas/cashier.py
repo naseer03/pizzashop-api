@@ -12,6 +12,9 @@ class CashierLoginBody(BaseModel):
 
 class CashierOrderCreate(BaseModel):
     order_type: str
+    status: str | None = None
+    kot_printed: bool = False
+    payment_status: str | None = None
     customer_id: int | None = None
     customer_name: str | None = None
     customer_phone: str | None = None

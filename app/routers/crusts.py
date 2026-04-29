@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import CurrentAdmin
-from app.models import Crust
+from app.models import Crust, CrustCategory
 from app.schemas.menu import AvailabilityPatch, CrustCreate
 from app.utils.responses import err, ok
 
@@ -11,9 +11,13 @@ router = APIRouter(prefix="/crusts", tags=["crusts"])
 
 
 def _c_dict(c: Crust) -> dict:
+    cat = None
+    if c.category_id:
+        cat = {"id": c.category_id, "name": (c.category.name if c.category else "")}
     return {
         "id": c.id,
         "name": c.name,
+        "category": cat,
         "price": float(c.price),
         "is_available": c.is_available,
         "sort_order": c.sort_order,
@@ -39,8 +43,14 @@ def get_crust(crust_id: int, _: CurrentAdmin, db: Session = Depends(get_db)):
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_crust(body: CrustCreate, _: CurrentAdmin, db: Session = Depends(get_db)):
+    if body.category_id is not None and not db.get(CrustCategory, body.category_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=err("RESOURCE_NOT_FOUND", "Crust category not found"),
+        )
     c = Crust(
         name=body.name,
+        category_id=body.category_id,
         price=body.price,
         is_available=body.is_available,
         sort_order=body.sort_order,
@@ -59,7 +69,13 @@ def update_crust(crust_id: int, body: CrustCreate, _: CurrentAdmin, db: Session 
             status_code=status.HTTP_404_NOT_FOUND,
             detail=err("RESOURCE_NOT_FOUND", "Crust not found"),
         )
+    if body.category_id is not None and not db.get(CrustCategory, body.category_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=err("RESOURCE_NOT_FOUND", "Crust category not found"),
+        )
     c.name = body.name
+    c.category_id = body.category_id
     c.price = body.price
     c.is_available = body.is_available
     c.sort_order = body.sort_order

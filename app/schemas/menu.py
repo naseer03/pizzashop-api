@@ -61,6 +61,7 @@ class ToppingCreate(BaseModel):
 
 class CrustCreate(BaseModel):
     name: str
+    category_id: int | None = None
     price: float = 0
     is_available: bool = True
     sort_order: int = 0

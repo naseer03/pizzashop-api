@@ -24,6 +24,9 @@ class OrderCreate(BaseModel):
     customer_phone: str | None = None
     customer_email: str | None = None
     order_type: str
+    status: str | None = None
+    kot_printed: bool = False
+    payment_status: str | None = None
     table_number: str | None = None
     delivery_address: str | None = None
     delivery_instructions: str | None = None

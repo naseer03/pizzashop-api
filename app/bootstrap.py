@@ -9,6 +9,7 @@ from app.models.entities import (
     BusinessHour,
     Category,
     Crust,
+    CrustCategory,
     DayOfWeek,
     Employee,
     EmployeeStatus,
@@ -124,16 +125,35 @@ def seed_if_empty(db: Session) -> None:
     ]:
         db.add(PaymentSetting(payment_method=method, display_name=label, is_enabled=True))
 
-    crusts = [
-        ("Hand Tossed", 0, 1),
-        ("Thin Crust", 0, 2),
-        ("Deep Dish", 2, 3),
-        ("Stuffed Crust", 2.5, 4),
-        ("Gluten Free", 3, 5),
-        ("Cauliflower", 3.5, 6),
+    crust_categories = [
+        ("Classic", 1),
+        ("Premium", 2),
+        ("Special Diet", 3),
     ]
-    for name, price, so in crusts:
-        db.add(Crust(name=name, price=price, sort_order=so))
+    crust_category_ids: dict[str, int] = {}
+    for name, sort_order in crust_categories:
+        category = CrustCategory(name=name, sort_order=sort_order, is_active=True)
+        db.add(category)
+        db.flush()
+        crust_category_ids[name] = category.id
+
+    crusts = [
+        ("Hand Tossed", "Classic", 0, 1),
+        ("Thin Crust", "Classic", 0, 2),
+        ("Deep Dish", "Premium", 2, 3),
+        ("Stuffed Crust", "Premium", 2.5, 4),
+        ("Gluten Free", "Special Diet", 3, 5),
+        ("Cauliflower", "Special Diet", 3.5, 6),
+    ]
+    for name, category_name, price, so in crusts:
+        db.add(
+            Crust(
+                name=name,
+                category_id=crust_category_ids.get(category_name),
+                price=price,
+                sort_order=so,
+            )
+        )
 
     cat_pizza = Category(
         name="Pizzas",

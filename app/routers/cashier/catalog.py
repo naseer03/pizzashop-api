@@ -31,6 +31,11 @@ def _crust_dict(crust: Crust) -> dict:
     return {
         "id": crust.id,
         "name": crust.name,
+        "category": (
+            {"id": crust.category_id, "name": crust.category.name if crust.category else ""}
+            if crust.category_id
+            else None
+        ),
         "price": float(crust.price),
         "is_available": crust.is_available,
         "sort_order": crust.sort_order,

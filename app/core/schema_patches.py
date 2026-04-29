@@ -45,6 +45,17 @@ def _has_fk(conn, table: str, fk_name: str) -> bool:
     return int(n or 0) > 0
 
 
+def _has_table(conn, table: str) -> bool:
+    q = text(
+        """
+        SELECT COUNT(*) FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t
+        """
+    )
+    n = conn.execute(q, {"t": table}).scalar()
+    return int(n or 0) > 0
+
+
 def apply_cashier_schema_patches(engine: Engine) -> None:
     """Add known missing columns/constraints for legacy DBs."""
     try:
@@ -99,6 +110,49 @@ def apply_cashier_schema_patches(engine: Engine) -> None:
                     )
                 )
                 log.warning("Applied DDL: toppings.category_fk")
+
+            if not _has_table(conn, "crust_categories"):
+                conn.execute(
+                    text(
+                        """
+                        CREATE TABLE crust_categories (
+                            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                            name VARCHAR(100) NOT NULL UNIQUE,
+                            sort_order INT NOT NULL DEFAULT 0,
+                            is_active BOOL NOT NULL DEFAULT TRUE,
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                        )
+                        """
+                    )
+                )
+                log.warning("Applied DDL: created crust_categories table")
+
+            if not _has_column(conn, "crusts", "category_id"):
+                conn.execute(
+                    text("ALTER TABLE crusts ADD COLUMN category_id INT NULL AFTER name")
+                )
+                log.warning("Applied DDL: crusts.category_id")
+
+            if not _has_fk(conn, "crusts", "crusts_category_fk"):
+                conn.execute(
+                    text(
+                        """
+                        ALTER TABLE crusts
+                        ADD CONSTRAINT crusts_category_fk
+                        FOREIGN KEY (category_id) REFERENCES crust_categories (id)
+                        """
+                    )
+                )
+                log.warning("Applied DDL: crusts.category_fk")
+
+            if not _has_column(conn, "orders", "kot_printed"):
+                conn.execute(
+                    text(
+                        "ALTER TABLE orders ADD COLUMN kot_printed BOOL NOT NULL DEFAULT FALSE AFTER payment_status"
+                    )
+                )
+                log.warning("Applied DDL: orders.kot_printed")
     except Exception:
         log.exception("Cashier schema patch failed (check DB user has ALTER privileges)")
         raise

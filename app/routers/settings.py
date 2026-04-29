@@ -6,9 +6,10 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import CurrentAdmin
-from app.models import BusinessHour, DayOfWeek, NotificationSetting, StoreSetting
+from app.models import BusinessHour, CrustCategory, DayOfWeek, NotificationSetting, StoreSetting
 from app.schemas.ops import (
     BusinessHoursUpdateBody,
+    CrustCategoryCreate,
     PaymentsSettingsCreate,
     PaymentsSettingsBody,
     StoreSettingsBody,
@@ -244,6 +245,15 @@ def _payments_payload(db: Session) -> dict[str, Any]:
     }
 
 
+def _crust_category_dict(row: CrustCategory) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "name": row.name,
+        "sort_order": row.sort_order,
+        "is_active": row.is_active,
+    }
+
+
 @router.get("/payments", summary="Get payment settings")
 def get_payments(_: CurrentAdmin, db: Session = Depends(get_db)):
     return ok(_payments_payload(db))
@@ -300,3 +310,24 @@ def put_payments(body: PaymentsSettingsBody, _: CurrentAdmin, db: Session = Depe
     db.commit()
     db.refresh(s)
     return ok(_payments_payload(db))
+
+
+@router.get("/crust-categories", summary="List crust categories")
+def get_crust_categories(_: CurrentAdmin, db: Session = Depends(get_db)):
+    rows = db.query(CrustCategory).order_by(CrustCategory.sort_order, CrustCategory.id).all()
+    return ok([_crust_category_dict(row) for row in rows])
+
+
+@router.post(
+    "/crust-categories",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create crust category",
+)
+def post_crust_category(
+    body: CrustCategoryCreate, _: CurrentAdmin, db: Session = Depends(get_db)
+):
+    row = CrustCategory(name=body.name.strip(), sort_order=body.sort_order, is_active=body.is_active)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return ok(_crust_category_dict(row))

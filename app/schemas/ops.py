@@ -213,6 +213,12 @@ class PaymentsSettingsCreate(PaymentsSettingsBody):
     )
 
 
+class CrustCategoryCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    sort_order: int = 0
+    is_active: bool = True
+
+
 class ReportExportBody(BaseModel):
     report_type: str
     format: str

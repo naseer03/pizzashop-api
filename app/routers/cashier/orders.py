@@ -66,6 +66,7 @@ def list_active_orders(
                     "order_number": r.order_number,
                     "status": r.status.value,
                     "payment_status": r.payment_status.value,
+                    "kot_printed": r.kot_printed,
                     "total_amount": float(r.total_amount),
                     "created_at": r.created_at.isoformat().replace("+00:00", "Z") if r.created_at else None,
                 }

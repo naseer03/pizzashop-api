@@ -105,6 +105,7 @@ def list_orders(
                 "total_amount": float(o.total_amount),
                 "payment_method": o.payment_method.value,
                 "payment_status": o.payment_status.value,
+                "kot_printed": o.kot_printed,
                 "created_at": o.created_at.isoformat().replace("+00:00", "Z") if o.created_at else None,
                 "estimated_ready_time": o.estimated_ready_time.isoformat().replace("+00:00", "Z")
                 if o.estimated_ready_time
@@ -145,13 +146,9 @@ def get_order(order_id: int, _: CurrentAdmin, db: Session = Depends(get_db)):
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_order(body: OrderCreate, _: CurrentAdmin, db: Session = Depends(get_db)):
-    try:
-        ot = OrderType(body.order_type)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=err("VALIDATION_ERROR", "Invalid order_type"),
-        ) from None
+    ot = order_ops.parse_order_type(body.order_type)
+    initial_status = order_ops.parse_order_status(body.status)
+    initial_payment_status = order_ops.parse_payment_status(body.payment_status)
     try:
         pm = PaymentMethod(body.payment_method)
     except ValueError:
@@ -184,7 +181,7 @@ def create_order(body: OrderCreate, _: CurrentAdmin, db: Session = Depends(get_d
         customer_phone=cphone,
         customer_email=cemail,
         order_type=ot,
-        status=OrderStatus.pending,
+        status=initial_status,
         table_number=body.table_number,
         delivery_address=body.delivery_address,
         delivery_instructions=body.delivery_instructions,
@@ -195,7 +192,8 @@ def create_order(body: OrderCreate, _: CurrentAdmin, db: Session = Depends(get_d
         discount_code=body.discount_code,
         total_amount=total_amount,
         payment_method=pm,
-        payment_status=PaymentStatus.pending,
+        payment_status=initial_payment_status,
+        kot_printed=body.kot_printed,
         notes=body.notes,
     )
 
@@ -222,6 +220,8 @@ def create_order(body: OrderCreate, _: CurrentAdmin, db: Session = Depends(get_d
             "id": order.id,
             "order_number": order.order_number,
             "status": order.status.value,
+            "payment_status": order.payment_status.value,
+            "kot_printed": order.kot_printed,
             "total_amount": float(order.total_amount),
             "created_at": order.created_at.isoformat().replace("+00:00", "Z") if order.created_at else None,
         }

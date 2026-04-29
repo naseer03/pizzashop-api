@@ -26,6 +26,46 @@ from app.schemas.orders import OrderItemIn
 from app.utils.responses import err
 
 
+def parse_order_type(raw: str) -> OrderType:
+    key = (raw or "").strip().lower()
+    try:
+        return OrderType(key)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=err("VALIDATION_ERROR", "Invalid order_type"),
+        ) from None
+
+
+def parse_order_status(raw: str | None) -> OrderStatus:
+    key = (raw or "").strip().lower()
+    if not key:
+        return OrderStatus.pending
+    # Compatibility with external payloads that send CREATED.
+    if key == "created":
+        return OrderStatus.pending
+    try:
+        return OrderStatus(key)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=err("VALIDATION_ERROR", "Invalid status"),
+        ) from None
+
+
+def parse_payment_status(raw: str | None) -> PaymentStatus:
+    key = (raw or "").strip().lower()
+    if not key:
+        return PaymentStatus.pending
+    try:
+        return PaymentStatus(key)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=err("VALIDATION_ERROR", "Invalid payment_status"),
+        ) from None
+
+
 def next_order_number(db: Session) -> str:
     year = datetime.now(timezone.utc).year
     prefix = f"ORD-{year}-"
@@ -115,6 +155,7 @@ def order_detail_dict(db: Session, o: Order) -> dict:
         "total_amount": float(o.total_amount),
         "payment_method": o.payment_method.value,
         "payment_status": o.payment_status.value,
+        "kot_printed": o.kot_printed,
         "paid_at": o.paid_at.isoformat().replace("+00:00", "Z") if o.paid_at else None,
         "notes": o.notes,
         "assigned_employee": emp,

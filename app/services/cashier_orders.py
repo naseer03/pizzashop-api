@@ -15,7 +15,6 @@ from app.models import (
     OrderItem,
     OrderItemTopping,
     OrderStatus,
-    OrderType,
     PaymentMethod,
     PaymentStatus,
     StoreSetting,
@@ -86,13 +85,9 @@ def create_order(
     principal: CashierPrincipal,
     body: CashierOrderCreate,
 ) -> Order:
-    try:
-        ot = OrderType(body.order_type)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=err("VALIDATION_ERROR", "Invalid order_type"),
-        ) from None
+    ot = order_ops.parse_order_type(body.order_type)
+    initial_status = order_ops.parse_order_status(body.status)
+    initial_payment_status = order_ops.parse_payment_status(body.payment_status)
     pm = parse_payment_method(body.payment_method)
 
     subtotal, line_entities = order_ops.build_order_line_entities(db, body.items)
@@ -120,7 +115,7 @@ def create_order(
             customer_phone=cphone,
             customer_email=cemail,
             order_type=ot,
-            status=OrderStatus.pending,
+            status=initial_status,
             table_number=body.table_number,
             delivery_address=body.delivery_address,
             delivery_instructions=body.delivery_instructions,
@@ -131,7 +126,8 @@ def create_order(
             discount_code=body.discount_code,
             total_amount=total_amount,
             payment_method=pm,
-            payment_status=PaymentStatus.pending,
+            payment_status=initial_payment_status,
+            kot_printed=body.kot_printed,
             notes=body.notes,
             assigned_employee_id=principal.employee.id,
         )
