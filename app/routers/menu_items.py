@@ -31,11 +31,33 @@ def _parse_sizes_form(raw: str | None, *, required: bool) -> list[MenuSizeIn] | 
         return None
     try:
         loaded = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=err("VALIDATION_ERROR", f"sizes must be a valid JSON array: {exc.msg}"),
-        ) from None
+    except json.JSONDecodeError:
+        # Backward-compatible shorthand: "20,30,40,50" -> small/medium/large/extra_large.
+        parts = [p.strip() for p in raw.split(",")] if raw else []
+        if not parts or any(p == "" for p in parts):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=err("VALIDATION_ERROR", "sizes must be a valid JSON array."),
+            ) from None
+        allowed = ["small", "medium", "large", "extra_large"]
+        if len(parts) > len(allowed):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=err(
+                    "VALIDATION_ERROR",
+                    "sizes CSV supports up to 4 values: small,medium,large,extra_large",
+                ),
+            ) from None
+        try:
+            loaded = [
+                {"size": allowed[i], "price": float(parts[i]), "is_default": i == 0}
+                for i in range(len(parts))
+            ]
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=err("VALIDATION_ERROR", "sizes CSV must contain numeric prices only."),
+            ) from None
     if not isinstance(loaded, list):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
