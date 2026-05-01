@@ -65,7 +65,7 @@ Errors use `{ "success": false, "error": { "code", "message", ... } }` with appr
 ## Menu item images
 - Create/update with **`POST /v1/menu-items`** and **`PUT /v1/menu-items/{id}`** using **`multipart/form-data`**.
 - Include image in the same request using file field **`image`**.
-- For `sizes`, send a JSON array string (e.g. `[{"size":"small","price":10.99,"is_default":false}]`).
+- For `sizes`, send a JSON array string (e.g. `[{"size":"small","price":10.99,"is_default":false},{"size":"extra_large","price":22.99,"is_default":false}]`).
 - `image_url` is returned in responses and served from **`MEDIA_URL_PREFIX`**.
 """
 

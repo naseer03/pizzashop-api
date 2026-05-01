@@ -191,6 +191,9 @@ def seed_if_empty(db: Session) -> None:
     db.add(
         MenuItemSize(menu_item_id=item.id, size_name=SizeName.large, price=18.99, is_default=False)
     )
+    db.add(
+        MenuItemSize(menu_item_id=item.id, size_name=SizeName.extra_large, price=22.99, is_default=False)
+    )
 
     emp = Employee(
         employee_code="EMP001",

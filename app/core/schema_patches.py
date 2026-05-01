@@ -31,6 +31,28 @@ def _order_status_type(conn) -> str | None:
     return str(row) if row is not None else None
 
 
+def _menu_item_size_type(conn) -> str | None:
+    q = text(
+        """
+        SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'menu_item_sizes' AND COLUMN_NAME = 'size_name'
+        """
+    )
+    row = conn.execute(q).scalar()
+    return str(row) if row is not None else None
+
+
+def _order_item_size_type(conn) -> str | None:
+    q = text(
+        """
+        SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'size'
+        """
+    )
+    row = conn.execute(q).scalar()
+    return str(row) if row is not None else None
+
+
 def _has_fk(conn, table: str, fk_name: str) -> bool:
     q = text(
         """
@@ -94,6 +116,30 @@ def apply_cashier_schema_patches(engine: Engine) -> None:
                     )
                 )
                 log.warning("Applied DDL: orders.status extended with on_hold")
+
+            menu_size_type = _menu_item_size_type(conn)
+            if menu_size_type and "extra_large" not in menu_size_type:
+                conn.execute(
+                    text(
+                        """
+                        ALTER TABLE menu_item_sizes
+                        MODIFY COLUMN size_name ENUM('small','medium','large','extra_large') NOT NULL
+                        """
+                    )
+                )
+                log.warning("Applied DDL: menu_item_sizes.size_name extended with extra_large")
+
+            order_item_size_type = _order_item_size_type(conn)
+            if order_item_size_type and "extra_large" not in order_item_size_type:
+                conn.execute(
+                    text(
+                        """
+                        ALTER TABLE order_items
+                        MODIFY COLUMN size ENUM('small','medium','large','extra_large') NULL
+                        """
+                    )
+                )
+                log.warning("Applied DDL: order_items.size extended with extra_large")
 
             if not _has_column(conn, "toppings", "category_id"):
                 conn.execute(

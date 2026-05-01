@@ -47,6 +47,7 @@ class SizeName(str, enum.Enum):
     small = "small"
     medium = "medium"
     large = "large"
+    extra_large = "extra_large"
 
 
 class InventoryCategory(str, enum.Enum):
