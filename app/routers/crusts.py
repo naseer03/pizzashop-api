@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import CurrentAdmin
-from app.models import Crust, CrustCategory
+from app.models import Category, Crust
 from app.schemas.menu import AvailabilityPatch, CrustCreate
 from app.utils.responses import err, ok
 
@@ -43,10 +43,10 @@ def get_crust(crust_id: int, _: CurrentAdmin, db: Session = Depends(get_db)):
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_crust(body: CrustCreate, _: CurrentAdmin, db: Session = Depends(get_db)):
-    if body.category_id is not None and not db.get(CrustCategory, body.category_id):
+    if body.category_id is not None and not db.get(Category, body.category_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=err("RESOURCE_NOT_FOUND", "Crust category not found"),
+            detail=err("RESOURCE_NOT_FOUND", "Category not found"),
         )
     c = Crust(
         name=body.name,
@@ -69,10 +69,10 @@ def update_crust(crust_id: int, body: CrustCreate, _: CurrentAdmin, db: Session 
             status_code=status.HTTP_404_NOT_FOUND,
             detail=err("RESOURCE_NOT_FOUND", "Crust not found"),
         )
-    if body.category_id is not None and not db.get(CrustCategory, body.category_id):
+    if body.category_id is not None and not db.get(Category, body.category_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=err("RESOURCE_NOT_FOUND", "Crust category not found"),
+            detail=err("RESOURCE_NOT_FOUND", "Category not found"),
         )
     c.name = body.name
     c.category_id = body.category_id

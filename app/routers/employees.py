@@ -2,13 +2,21 @@ from datetime import time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import or_
+from sqlalchemy import or_, update
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
 from app.database import get_db
 from app.deps import CurrentAdmin
-from app.models import DayOfWeek, Employee, EmployeeSchedule, EmployeeStatus, Role
+from app.models import (
+    DayOfWeek,
+    Employee,
+    EmployeeSchedule,
+    EmployeeStatus,
+    InventoryLog,
+    Order,
+    Role,
+)
 from app.schemas.ops import EmployeeCreate, EmployeeScheduleBody, EmployeeStatusPatch
 from app.utils.responses import err, ok
 
@@ -254,6 +262,36 @@ def put_schedule(employee_id: int, body: EmployeeScheduleBody, _: CurrentAdmin, 
     db.commit()
     db.refresh(e)
     return ok(_emp_dict(e))
+
+
+@router.delete("/{employee_id}/permanent")
+def delete_employee_permanent(employee_id: int, _: CurrentAdmin, db: Session = Depends(get_db)):
+    """Remove the employee row. Allowed only when status is inactive (use DELETE /{id} to deactivate first)."""
+    e = db.get(Employee, employee_id)
+    if not e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=err("RESOURCE_NOT_FOUND", "Employee not found"),
+        )
+    if e.status != EmployeeStatus.inactive:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=err(
+                "EMPLOYEE_NOT_INACTIVE",
+                "Only inactive employees can be permanently deleted; deactivate the employee first.",
+            ),
+        )
+    db.execute(
+        update(Order).where(Order.assigned_employee_id == employee_id).values(assigned_employee_id=None)
+    )
+    db.execute(
+        update(InventoryLog)
+        .where(InventoryLog.performed_by == employee_id)
+        .values(performed_by=None)
+    )
+    db.delete(e)
+    db.commit()
+    return ok({"id": employee_id, "deleted": True})
 
 
 @router.delete("/{employee_id}")

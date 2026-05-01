@@ -56,6 +56,21 @@ def _has_table(conn, table: str) -> bool:
     return int(n or 0) > 0
 
 
+def _crusts_category_fk_constraint(conn, *, referenced_table: str) -> str | None:
+    row = conn.execute(
+        text(
+            """
+            SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'crusts'
+              AND COLUMN_NAME = 'category_id' AND REFERENCED_TABLE_NAME = :ref
+            LIMIT 1
+            """
+        ),
+        {"ref": referenced_table},
+    ).scalar()
+    return str(row) if row else None
+
+
 def apply_cashier_schema_patches(engine: Engine) -> None:
     """Add known missing columns/constraints for legacy DBs."""
     try:
@@ -111,40 +126,48 @@ def apply_cashier_schema_patches(engine: Engine) -> None:
                 )
                 log.warning("Applied DDL: toppings.category_fk")
 
-            if not _has_table(conn, "crust_categories"):
-                conn.execute(
-                    text(
-                        """
-                        CREATE TABLE crust_categories (
-                            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-                            name VARCHAR(100) NOT NULL UNIQUE,
-                            sort_order INT NOT NULL DEFAULT 0,
-                            is_active BOOL NOT NULL DEFAULT TRUE,
-                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-                        )
-                        """
-                    )
-                )
-                log.warning("Applied DDL: created crust_categories table")
-
             if not _has_column(conn, "crusts", "category_id"):
                 conn.execute(
                     text("ALTER TABLE crusts ADD COLUMN category_id INT NULL AFTER name")
                 )
                 log.warning("Applied DDL: crusts.category_id")
 
-            if not _has_fk(conn, "crusts", "crusts_category_fk"):
+            fk_cc = _crusts_category_fk_constraint(conn, referenced_table="crust_categories")
+            if fk_cc:
+                safe_cn = fk_cc.replace("`", "")
+                conn.execute(text(f"ALTER TABLE crusts DROP FOREIGN KEY `{safe_cn}`"))
+                conn.execute(text("UPDATE crusts SET category_id = NULL"))
+                log.warning(
+                    "Applied DDL: dropped crusts FK to crust_categories; cleared crusts.category_id"
+                )
+
+            if _has_column(conn, "crusts", "category_id") and not _crusts_category_fk_constraint(
+                conn, referenced_table="categories"
+            ):
+                conn.execute(
+                    text(
+                        """
+                        UPDATE crusts c
+                        LEFT JOIN categories cat ON cat.id = c.category_id
+                        SET c.category_id = NULL
+                        WHERE c.category_id IS NOT NULL AND cat.id IS NULL
+                        """
+                    )
+                )
                 conn.execute(
                     text(
                         """
                         ALTER TABLE crusts
-                        ADD CONSTRAINT crusts_category_fk
-                        FOREIGN KEY (category_id) REFERENCES crust_categories (id)
+                        ADD CONSTRAINT crusts_menu_category_fk
+                        FOREIGN KEY (category_id) REFERENCES categories (id)
                         """
                     )
                 )
-                log.warning("Applied DDL: crusts.category_fk")
+                log.warning("Applied DDL: crusts.category_id FK -> categories")
+
+            if _has_table(conn, "crust_categories"):
+                conn.execute(text("DROP TABLE crust_categories"))
+                log.warning("Applied DDL: dropped obsolete crust_categories table")
 
             if not _has_column(conn, "orders", "kot_printed"):
                 conn.execute(

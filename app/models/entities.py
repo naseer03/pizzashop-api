@@ -259,6 +259,7 @@ class Category(Base):
     subcategories: Mapped[list["Subcategory"]] = relationship(
         back_populates="category", cascade="all, delete-orphan"
     )
+    crusts: Mapped[list["Crust"]] = relationship(back_populates="category")
 
 
 class Subcategory(Base):
@@ -301,7 +302,7 @@ class Crust(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    category_id: Mapped[int | None] = mapped_column(ForeignKey("crust_categories.id"))
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"))
     price: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
     is_available: Mapped[bool] = mapped_column(Boolean, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
@@ -310,20 +311,7 @@ class Crust(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
-    category: Mapped["CrustCategory"] = relationship()
-
-
-class CrustCategory(Base):
-    __tablename__ = "crust_categories"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )
+    category: Mapped[Category | None] = relationship(back_populates="crusts")
 
 
 class MenuItem(Base):

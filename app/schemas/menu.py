@@ -61,7 +61,10 @@ class ToppingCreate(BaseModel):
 
 class CrustCreate(BaseModel):
     name: str
-    category_id: int | None = None
+    category_id: int | None = Field(
+        default=None,
+        description="Menu category id (same `categories` table as items/toppings); optional.",
+    )
     price: float = 0
     is_available: bool = True
     sort_order: int = 0
