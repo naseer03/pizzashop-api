@@ -32,20 +32,20 @@ def _parse_sizes_form(raw: str | None, *, required: bool) -> list[MenuSizeIn] | 
     try:
         loaded = json.loads(raw)
     except json.JSONDecodeError:
-        # Backward-compatible shorthand: "20,30,40,50" -> small/medium/large/extra_large.
+        # Backward-compatible shorthand: "15,20,30,40,50" -> half/small/medium/large/extra_large.
         parts = [p.strip() for p in raw.split(",")] if raw else []
         if not parts or any(p == "" for p in parts):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=err("VALIDATION_ERROR", "sizes must be a valid JSON array."),
             ) from None
-        allowed = ["small", "medium", "large", "extra_large"]
+        allowed = ["half", "small", "medium", "large", "extra_large"]
         if len(parts) > len(allowed):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=err(
                     "VALIDATION_ERROR",
-                    "sizes CSV supports up to 4 values: small,medium,large,extra_large",
+                    "sizes CSV supports up to 5 values: half,small,medium,large,extra_large",
                 ),
             ) from None
         try:

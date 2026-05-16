@@ -44,6 +44,7 @@ class DayOfWeek(str, enum.Enum):
 
 
 class SizeName(str, enum.Enum):
+    half = "half"
     small = "small"
     medium = "medium"
     large = "large"

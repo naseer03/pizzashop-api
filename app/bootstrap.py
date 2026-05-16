@@ -183,6 +183,9 @@ def seed_if_empty(db: Session) -> None:
     db.add(item)
     db.flush()
     db.add(
+        MenuItemSize(menu_item_id=item.id, size_name=SizeName.half, price=7.99, is_default=False)
+    )
+    db.add(
         MenuItemSize(menu_item_id=item.id, size_name=SizeName.small, price=10.99, is_default=False)
     )
     db.add(

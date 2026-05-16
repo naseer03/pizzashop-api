@@ -1,6 +1,14 @@
 from sqlalchemy.orm import Session
 
-from app.models import Category, MenuItem, Subcategory
+from app.models import Category, MenuItem, SizeName, Subcategory
+
+_SIZE_SORT_ORDER: dict[SizeName, int] = {
+    SizeName.half: 0,
+    SizeName.small: 1,
+    SizeName.medium: 2,
+    SizeName.large: 3,
+    SizeName.extra_large: 4,
+}
 
 
 def menu_item_to_dict(db: Session, mi: MenuItem) -> dict:
@@ -12,7 +20,10 @@ def menu_item_to_dict(db: Session, mi: MenuItem) -> dict:
             "price": float(s.price),
             "is_default": s.is_default,
         }
-        for s in sorted(mi.sizes, key=lambda x: x.size_name.value)
+        for s in sorted(
+            mi.sizes,
+            key=lambda x: (_SIZE_SORT_ORDER.get(x.size_name, 99), x.size_name.value),
+        )
     ]
     return {
         "id": mi.id,

@@ -141,6 +141,34 @@ def apply_cashier_schema_patches(engine: Engine) -> None:
                 )
                 log.warning("Applied DDL: order_items.size extended with extra_large")
 
+            menu_size_type_half = _menu_item_size_type(conn)
+            if menu_size_type_half and "half" not in menu_size_type_half:
+                conn.execute(
+                    text(
+                        """
+                        ALTER TABLE menu_item_sizes
+                        MODIFY COLUMN size_name ENUM(
+                            'half','small','medium','large','extra_large'
+                        ) NOT NULL
+                        """
+                    )
+                )
+                log.warning("Applied DDL: menu_item_sizes.size_name extended with half")
+
+            order_item_size_type_half = _order_item_size_type(conn)
+            if order_item_size_type_half and "half" not in order_item_size_type_half:
+                conn.execute(
+                    text(
+                        """
+                        ALTER TABLE order_items
+                        MODIFY COLUMN size ENUM(
+                            'half','small','medium','large','extra_large'
+                        ) NULL
+                        """
+                    )
+                )
+                log.warning("Applied DDL: order_items.size extended with half")
+
             if not _has_column(conn, "toppings", "category_id"):
                 conn.execute(
                     text("ALTER TABLE toppings ADD COLUMN category_id INT NULL AFTER name")
