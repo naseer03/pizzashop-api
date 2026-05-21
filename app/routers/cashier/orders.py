@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -13,10 +13,11 @@ from app.schemas.cashier import (
     CashierOrderCommentsBody,
     CashierOrderCreate,
     CashierOrderItemAdd,
+    CashierOrderSearchBody,
     CashierPayBody,
 )
 from app.services import cashier_orders, order_ops
-from app.utils.responses import ok
+from app.utils.responses import err, ok
 
 router = APIRouter()
 
@@ -86,21 +87,51 @@ def list_active_orders(
     )
 
 
+def _search_order_by_number(db: Session, order_number: str):
+    o = cashier_orders.find_order_by_order_number(db, order_number)
+    return ok(order_ops.order_detail_dict(db, o))
+
+
 @router.get("/search")
-def search_order(
+def search_order_get(
+    _: Annotated[CashierPrincipal, Depends(RequireCashierPermissions("orders.view"))],
+    db: Session = Depends(get_db),
     order_number: Annotated[
-        str,
+        str | None,
         Query(
             min_length=1,
-            description="Order number to look up, e.g. ORD-2026-001. "
-            "A partial value is allowed when it matches exactly one order.",
+            description="Order number, e.g. ORD-2026-001 (preferred query param).",
         ),
-    ],
+    ] = None,
+    q: Annotated[
+        str | None,
+        Query(
+            min_length=1,
+            description="Alias for order_number.",
+        ),
+    ] = None,
+):
+    """Look up an order by printed order number (not database id)."""
+    ref = (order_number or q or "").strip()
+    if not ref:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=err(
+                "VALIDATION_ERROR",
+                "Query parameter order_number (or q) is required.",
+            ),
+        )
+    return _search_order_by_number(db, ref)
+
+
+@router.post("/search")
+def search_order_post(
+    body: CashierOrderSearchBody,
     _: Annotated[CashierPrincipal, Depends(RequireCashierPermissions("orders.view"))],
     db: Session = Depends(get_db),
 ):
-    o = cashier_orders.find_order_by_order_number(db, order_number)
-    return ok(order_ops.order_detail_dict(db, o))
+    """Look up an order by order_number in the JSON body (recommended for cashier UI)."""
+    return _search_order_by_number(db, body.order_number)
 
 
 @router.get("/{order_ref}/receipt")

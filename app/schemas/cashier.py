@@ -60,3 +60,13 @@ class CashierPayBody(BaseModel):
 
 class CashierCancelBody(BaseModel):
     reason: str = Field(..., min_length=1, max_length=255)
+
+
+class CashierOrderSearchBody(BaseModel):
+    order_number: str = Field(
+        ...,
+        min_length=1,
+        max_length=32,
+        description="Order number to look up, e.g. ORD-2026-001.",
+        examples=["ORD-2026-001"],
+    )

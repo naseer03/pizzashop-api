@@ -257,7 +257,7 @@ def get_order(db: Session, order_id: int) -> Order:
 
 def resolve_order_ref(db: Session, order_ref: str) -> Order:
     """Resolve an order by order_number (e.g. ORD-2026-001) or numeric primary key."""
-    ref = order_ref.strip()
+    ref = normalize_order_number_query(order_ref)
     if not ref:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -278,9 +278,26 @@ def resolve_order_ref(db: Session, order_ref: str) -> Order:
     return find_order_by_order_number(db, ref)
 
 
+def normalize_order_number_query(raw: str) -> str:
+    """Trim and normalize common cashier search inputs."""
+    ref = raw.strip()
+    if not ref:
+        return ref
+    upper = ref.upper()
+    if upper.startswith("ORD-"):
+        return upper
+    if upper.startswith("ORD") and len(upper) > 3 and upper[3] in "- ":
+        return "ORD-" + upper[4:].lstrip("- ").replace(" ", "")
+    # e.g. 2026-001 -> ORD-2026-001
+    parts = ref.replace(" ", "").split("-")
+    if len(parts) == 2 and len(parts[0]) == 4 and parts[0].isdigit() and parts[1].isdigit():
+        return f"ORD-{parts[0]}-{parts[1].zfill(3)}"
+    return ref
+
+
 def find_order_by_order_number(db: Session, order_number: str) -> Order:
     """Resolve an order by order_number (e.g. ORD-2026-001), with optional unique partial match."""
-    ref = order_number.strip()
+    ref = normalize_order_number_query(order_number)
     if not ref:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
