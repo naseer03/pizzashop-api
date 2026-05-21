@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class MenuSizeIn(BaseModel):
@@ -53,18 +53,45 @@ class SubcategoryCreate(BaseModel):
 
 class ToppingCreate(BaseModel):
     name: str
-    category_id: int
+    category_ids: list[int] = Field(
+        min_length=1,
+        description="Menu category ids (same `categories` table as menu items). At least one required.",
+    )
     price: float
     is_available: bool = True
     sort_order: int = 0
 
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_category_id(cls, data: object) -> object:
+        if isinstance(data, dict) and "category_id" in data and "category_ids" not in data:
+            data = {**data, "category_ids": [data["category_id"]]}
+        return data
+
 
 class CrustCreate(BaseModel):
     name: str
-    category_id: int | None = Field(
-        default=None,
-        description="Menu category id (same `categories` table as items/toppings); optional.",
+    category_ids: list[int] = Field(
+        default_factory=list,
+        description="Menu category ids; empty means available for all categories.",
     )
     price: float = 0
     is_available: bool = True
     sort_order: int = 0
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_category_id(cls, data: object) -> object:
+        if isinstance(data, dict) and "category_id" in data and "category_ids" not in data:
+            cid = data["category_id"]
+            data = {**data, "category_ids": [] if cid is None else [cid]}
+        return data
+
+    @field_validator("category_ids")
+    @classmethod
+    def _dedupe_category_ids(cls, v: list[int]) -> list[int]:
+        seen: list[int] = []
+        for cid in v:
+            if cid not in seen:
+                seen.append(cid)
+        return seen

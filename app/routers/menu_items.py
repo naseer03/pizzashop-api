@@ -12,6 +12,7 @@ from app.deps import CurrentAdmin
 from app.models import Category, MenuItem, MenuItemSize, SizeName
 from app.schemas.menu import AvailabilityPatch, MenuItemCreate, MenuItemUpdate, MenuSizeIn
 from app.services.cashier_menu import invalidate_menu_cache
+from app.services.delete_refs import deleted_payload, ensure_menu_item_deletable
 from app.services.menu_payloads import menu_item_to_dict
 from app.utils.menu_images import save_menu_item_image, try_remove_stored_menu_image
 from app.utils.responses import err, ok
@@ -327,7 +328,7 @@ def patch_availability(item_id: int, body: AvailabilityPatch, _: CurrentAdmin, d
     return ok(_item_dict(db, mi))
 
 
-@router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{item_id}")
 def delete_menu_item(item_id: int, _: CurrentAdmin, db: Session = Depends(get_db)):
     mi = db.get(MenuItem, item_id)
     if not mi:
@@ -335,9 +336,9 @@ def delete_menu_item(item_id: int, _: CurrentAdmin, db: Session = Depends(get_db
             status_code=status.HTTP_404_NOT_FOUND,
             detail=err("RESOURCE_NOT_FOUND", "Menu item not found"),
         )
+    ensure_menu_item_deletable(db, item_id)
     try_remove_stored_menu_image(mi.image_url)
-    iid = mi.id
     db.delete(mi)
     db.commit()
-    invalidate_menu_cache(iid)
-    return None
+    invalidate_menu_cache(item_id)
+    return ok(deleted_payload(item_id))

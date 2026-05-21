@@ -24,8 +24,25 @@ class CashierOrderCreate(BaseModel):
     delivery_instructions: str | None = None
     items: list[OrderItemIn]
     discount_code: str | None = None
-    notes: str | None = None
+    comments: str | None = Field(
+        default=None,
+        max_length=2000,
+        description="Order-level comments (stored as order notes).",
+    )
+    notes: str | None = Field(
+        default=None,
+        max_length=2000,
+        description="Alias for comments (legacy). If both are sent, comments wins.",
+    )
     payment_method: str = "cash"
+
+
+class CashierOrderCommentsBody(BaseModel):
+    comments: str | None = Field(
+        default=None,
+        max_length=2000,
+        description="Order-level comments; send null or empty string to clear.",
+    )
 
 
 class CashierOrderItemAdd(BaseModel):

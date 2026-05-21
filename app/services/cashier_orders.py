@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.deps import CashierPrincipal
@@ -80,6 +81,14 @@ def parse_payment_method(raw: str) -> PaymentMethod:
         ) from None
 
 
+def _resolve_order_comments(body: CashierOrderCreate) -> str | None:
+    if body.comments is not None:
+        return body.comments.strip() or None
+    if body.notes is not None:
+        return body.notes.strip() or None
+    return None
+
+
 def create_order(
     db: Session,
     principal: CashierPrincipal,
@@ -128,7 +137,7 @@ def create_order(
             payment_method=pm,
             payment_status=initial_payment_status,
             kot_printed=body.kot_printed,
-            notes=body.notes,
+            notes=_resolve_order_comments(body),
             assigned_employee_id=principal.employee.id,
         )
         db.add(order)
@@ -233,19 +242,79 @@ def list_active_orders(db: Session) -> list[Order]:
     )
 
 
+def _order_detail_query(db: Session):
+    return db.query(Order).options(joinedload(Order.items).joinedload(OrderItem.toppings))
+
+
 def get_order(db: Session, order_id: int) -> Order:
-    o = (
-        db.query(Order)
-        .options(joinedload(Order.items).joinedload(OrderItem.toppings))
-        .filter(Order.id == order_id)
-        .first()
-    )
+    o = _order_detail_query(db).filter(Order.id == order_id).first()
     if not o:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=err("RESOURCE_NOT_FOUND", "Order not found"),
         )
     return o
+
+
+def find_order_by_reference(db: Session, reference: str) -> Order:
+    """Resolve an order by numeric primary key or order_number (exact or unique partial)."""
+    ref = reference.strip()
+    if not ref:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=err("VALIDATION_ERROR", "order_id query parameter is required"),
+        )
+
+    q = _order_detail_query(db)
+
+    if ref.isdigit():
+        o = q.filter(Order.id == int(ref)).first()
+        if o:
+            return o
+
+    o = q.filter(Order.order_number == ref).first()
+    if o:
+        return o
+
+    upper = ref.upper()
+    if upper != ref:
+        o = q.filter(Order.order_number == upper).first()
+        if o:
+            return o
+
+    pattern = f"%{ref}%"
+    matches = (
+        q.filter(
+            or_(
+                Order.order_number.like(pattern),
+                Order.customer_name.like(pattern),
+                Order.customer_phone.like(pattern),
+            )
+        )
+        .order_by(Order.id.desc())
+        .limit(5)
+        .all()
+    )
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=err(
+                "AMBIGUOUS_ORDER_REFERENCE",
+                "Multiple orders match this search; use the full order number or numeric id.",
+                details={
+                    "matches": [
+                        {"id": m.id, "order_number": m.order_number} for m in matches
+                    ]
+                },
+            ),
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=err("RESOURCE_NOT_FOUND", "Order not found"),
+    )
 
 
 def process_payment(db: Session, order_id: int, body: CashierPayBody) -> dict:
@@ -312,6 +381,17 @@ def cancel_order(db: Session, order_id: int, body: CashierCancelBody) -> Order:
     return order
 
 
+def update_order_comments(db: Session, order_id: int, comments: str | None) -> Order:
+    order = _load_order_for_edit(db, order_id)
+    order.notes = comments.strip() if comments and comments.strip() else None
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return get_order(db, order_id)
+
+
 def hold_order(db: Session, order_id: int) -> Order:
     order = _load_order_for_edit(db, order_id)
     order.status = OrderStatus.on_hold
@@ -356,6 +436,7 @@ def receipt_json(db: Session, order_id: int) -> dict:
         )
     return {
         "order_number": o.get("order_number"),
+        "comments": o.get("comments"),
         "items": lines,
         "subtotal": o.get("subtotal"),
         "tax": o.get("tax_amount"),

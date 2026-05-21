@@ -1,64 +1,66 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.deps import CurrentAdmin
-from app.models import Category, Crust
+from app.models import Crust
 from app.schemas.menu import AvailabilityPatch, CrustCreate
+from app.services.cashier_menu import invalidate_menu_cache
+from app.services.catalog_categories import (
+    assign_crust_categories,
+    crust_item_dict,
+    group_crusts_by_category,
+)
+from app.services.delete_refs import deleted_payload, ensure_crust_deletable
 from app.utils.responses import err, ok
 
 router = APIRouter(prefix="/crusts", tags=["crusts"])
 
 
-def _c_dict(c: Crust) -> dict:
-    cat = None
-    if c.category_id:
-        cat = {"id": c.category_id, "name": (c.category.name if c.category else "")}
-    return {
-        "id": c.id,
-        "name": c.name,
-        "category": cat,
-        "price": float(c.price),
-        "is_available": c.is_available,
-        "sort_order": c.sort_order,
-    }
+def _crust_query(db: Session):
+    return db.query(Crust).options(joinedload(Crust.category)).order_by(Crust.sort_order, Crust.id)
 
 
 @router.get("")
-def list_crusts(_: CurrentAdmin, db: Session = Depends(get_db)):
-    rows = db.query(Crust).order_by(Crust.sort_order, Crust.id).all()
-    return ok([_c_dict(c) for c in rows])
+def list_crusts(
+    _: CurrentAdmin,
+    db: Session = Depends(get_db),
+    category_id: Annotated[int | None, Query(description="Filter by menu category id")] = None,
+):
+    q = _crust_query(db)
+    if category_id is not None:
+        q = q.filter(Crust.category_id == category_id)
+    return ok({"categories": group_crusts_by_category(q.all())})
 
 
 @router.get("/{crust_id}")
 def get_crust(crust_id: int, _: CurrentAdmin, db: Session = Depends(get_db)):
-    c = db.get(Crust, crust_id)
+    c = _crust_query(db).filter(Crust.id == crust_id).first()
     if not c:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=err("RESOURCE_NOT_FOUND", "Crust not found"),
         )
-    return ok(_c_dict(c))
+    return ok(crust_item_dict(c))
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_crust(body: CrustCreate, _: CurrentAdmin, db: Session = Depends(get_db)):
-    if body.category_id is not None and not db.get(Category, body.category_id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=err("RESOURCE_NOT_FOUND", "Category not found"),
-        )
     c = Crust(
         name=body.name,
-        category_id=body.category_id,
+        category_id=body.category_ids[0] if body.category_ids else None,
         price=body.price,
         is_available=body.is_available,
         sort_order=body.sort_order,
     )
+    assign_crust_categories(db, c, body.category_ids)
     db.add(c)
     db.commit()
-    db.refresh(c)
-    return ok(_c_dict(c))
+    c = _crust_query(db).filter(Crust.id == c.id).one()
+    invalidate_menu_cache()
+    return ok(crust_item_dict(c))
 
 
 @router.put("/{crust_id}")
@@ -69,19 +71,15 @@ def update_crust(crust_id: int, body: CrustCreate, _: CurrentAdmin, db: Session 
             status_code=status.HTTP_404_NOT_FOUND,
             detail=err("RESOURCE_NOT_FOUND", "Crust not found"),
         )
-    if body.category_id is not None and not db.get(Category, body.category_id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=err("RESOURCE_NOT_FOUND", "Category not found"),
-        )
     c.name = body.name
-    c.category_id = body.category_id
     c.price = body.price
     c.is_available = body.is_available
     c.sort_order = body.sort_order
+    assign_crust_categories(db, c, body.category_ids)
     db.commit()
     db.refresh(c)
-    return ok(_c_dict(c))
+    invalidate_menu_cache()
+    return ok(crust_item_dict(c))
 
 
 @router.patch("/{crust_id}/availability")
@@ -97,10 +95,11 @@ def patch_crust_availability(
     c.is_available = body.is_available
     db.commit()
     db.refresh(c)
-    return ok(_c_dict(c))
+    invalidate_menu_cache()
+    return ok(crust_item_dict(c))
 
 
-@router.delete("/{crust_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{crust_id}")
 def delete_crust(crust_id: int, _: CurrentAdmin, db: Session = Depends(get_db)):
     c = db.get(Crust, crust_id)
     if not c:
@@ -108,6 +107,8 @@ def delete_crust(crust_id: int, _: CurrentAdmin, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=err("RESOURCE_NOT_FOUND", "Crust not found"),
         )
+    ensure_crust_deletable(db, crust_id)
     db.delete(c)
     db.commit()
-    return None
+    invalidate_menu_cache()
+    return ok(deleted_payload(crust_id))

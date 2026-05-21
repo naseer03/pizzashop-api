@@ -6,6 +6,7 @@ from app.database import get_db
 from app.deps import CurrentAdmin
 from app.models import Employee, Permission, Role, RolePermission
 from app.schemas.ops import RoleCreate, RolePermissionsBody
+from app.services.delete_refs import deleted_payload, ensure_role_deletable
 from app.utils.responses import err, ok
 
 router = APIRouter(tags=["roles"])
@@ -114,7 +115,7 @@ def update_role_permissions(
     return ok(_role_dict(db, r))
 
 
-@router.delete("/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/roles/{role_id}")
 def delete_role(role_id: int, _: CurrentAdmin, db: Session = Depends(get_db)):
     r = db.get(Role, role_id)
     if not r:
@@ -127,9 +128,10 @@ def delete_role(role_id: int, _: CurrentAdmin, db: Session = Depends(get_db)):
             status_code=status.HTTP_403_FORBIDDEN,
             detail=err("PERMISSION_DENIED", "Cannot delete system role"),
         )
+    ensure_role_deletable(db, r)
     db.delete(r)
     db.commit()
-    return None
+    return ok(deleted_payload(role_id))
 
 
 @router.get("/permissions")

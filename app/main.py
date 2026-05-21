@@ -39,20 +39,32 @@ All versioned routes are under **`/v1`**. Example: `GET /v1/auth/me`.
 
 Interactive docs: **`/docs`** (Swagger UI), **`/redoc`** (ReDoc), **`/openapi.json`** (OpenAPI schema).
 
-## Authentication
-1. Call **`POST /v1/auth/login`** with email and password.
-2. Copy `data.access_token` from the response.
-3. In Swagger UI, click **Authorize** and enter a value. Use either the raw JWT or the form `Bearer <token>` depending on your client; the UI typically sends `Authorization: Bearer …`.
-4. Protected routes require a valid JWT access token.
+## Authentication (Swagger: two Authorize buttons)
+
+**Admin** (dashboard, menu, settings, reports, …):
+1. **`POST /v1/auth/login`** — e.g. `admin@pizzahub.com` / `admin123` (seed).
+2. Copy `data.access_token`.
+3. Click **Authorize → AdminBearer** and paste the token (no `Bearer` prefix).
+
+**Cashier / POS** (`/v1/cashier/...`):
+1. **`POST /v1/cashier/auth/login`** — active employee email/password with POS permissions.
+2. Copy `data.access_token`.
+3. Click **Authorize → CashierBearer** and paste the token.
+
+You can authorize **both** at once to try admin and cashier routes in the same session.
+Admin tokens use `sub` = admin user id; cashier tokens use `sub` = `emp:{employee_id}` and `principal: employee`.
 
 ## Response shape
 Successful responses wrap payloads as `{ "success": true, "data": ... }`.
 Errors use `{ "success": false, "error": { "code", "message", ... } }` with appropriate HTTP status codes.
 
-## Store settings (singleton)
+## General settings (public, for cashier UI)
+- **`GET /v1/settings/general`** — No auth. Returns `store`, `business_hours`, and `payments` in one payload for POS splash screens and displays.
+
+## Store settings (singleton, admin)
 - **`POST /v1/settings/store`** — Create the initial store row when none exists (**201**). Returns **409** if settings were already created; use **PUT** to change them.
 - **`PUT /v1/settings/store`** — Update existing store fields (partial body allowed).
-- **`GET /v1/settings/store`** — Read current store profile.
+- **`GET /v1/settings/store`** — Read current store profile (admin).
 
 ## Payment settings (singleton)
 - **`POST /v1/settings/payments`** — Create initial payment settings when none exist (**201**). Returns **409** if already present; use **PUT** to update.
@@ -86,7 +98,7 @@ OPENAPI_TAGS_METADATA = [
     {"name": "roles", "description": "RBAC roles and permission sets."},
     {
         "name": "settings",
-        "description": "Store profile (GET/POST/PUT store), business hours, payments/tax, and notification toggles.",
+        "description": "Public GET /settings/general; admin store profile, business hours, payments/tax, and notification toggles.",
     },
     {"name": "reports", "description": "Report generation and exports."},
     {

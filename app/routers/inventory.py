@@ -16,6 +16,7 @@ from app.models import (
     InventoryUnit,
 )
 from app.schemas.ops import InventoryCreate, StockPatch
+from app.services.delete_refs import deleted_payload
 from app.utils.responses import err, ok
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
@@ -253,7 +254,7 @@ def inventory_logs(inv_id: int, _: CurrentAdmin, db: Session = Depends(get_db)):
     )
 
 
-@router.delete("/{inv_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{inv_id}")
 def delete_inventory(inv_id: int, _: CurrentAdmin, db: Session = Depends(get_db)):
     inv = db.get(Inventory, inv_id)
     if not inv:
@@ -263,4 +264,4 @@ def delete_inventory(inv_id: int, _: CurrentAdmin, db: Session = Depends(get_db)
         )
     inv.is_active = False
     db.commit()
-    return None
+    return ok(deleted_payload(inv_id))

@@ -6,6 +6,11 @@ from app.deps import CurrentAdmin
 from app.models import Category, Subcategory
 from app.schemas.menu import CategoryCreate, SubcategoryCreate
 from app.services.cashier_menu import invalidate_menu_cache
+from app.services.delete_refs import (
+    clear_subcategory_on_menu_items,
+    delete_category_with_dependents,
+    deleted_payload,
+)
 from app.utils.responses import err, ok
 from app.utils.slug import slugify
 
@@ -76,7 +81,7 @@ def update_category(category_id: int, body: CategoryCreate, _: CurrentAdmin, db:
     return ok(_cat_dict(c))
 
 
-@router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/categories/{category_id}")
 def delete_category(category_id: int, _: CurrentAdmin, db: Session = Depends(get_db)):
     c = db.get(Category, category_id)
     if not c:
@@ -84,10 +89,10 @@ def delete_category(category_id: int, _: CurrentAdmin, db: Session = Depends(get
             status_code=status.HTTP_404_NOT_FOUND,
             detail=err("RESOURCE_NOT_FOUND", "Category not found"),
         )
-    db.delete(c)
+    delete_category_with_dependents(db, c)
     db.commit()
     invalidate_menu_cache()
-    return None
+    return ok(deleted_payload(category_id))
 
 
 @router.post("/categories/{category_id}/subcategories", status_code=status.HTTP_201_CREATED)
@@ -147,7 +152,7 @@ def update_subcategory(sub_id: int, body: SubcategoryCreate, _: CurrentAdmin, db
     )
 
 
-@router.delete("/subcategories/{sub_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/subcategories/{sub_id}")
 def delete_subcategory(sub_id: int, _: CurrentAdmin, db: Session = Depends(get_db)):
     s = db.get(Subcategory, sub_id)
     if not s:
@@ -155,7 +160,8 @@ def delete_subcategory(sub_id: int, _: CurrentAdmin, db: Session = Depends(get_d
             status_code=status.HTTP_404_NOT_FOUND,
             detail=err("RESOURCE_NOT_FOUND", "Subcategory not found"),
         )
+    clear_subcategory_on_menu_items(db, sub_id)
     db.delete(s)
     db.commit()
     invalidate_menu_cache()
-    return None
+    return ok(deleted_payload(sub_id))

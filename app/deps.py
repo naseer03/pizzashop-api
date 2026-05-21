@@ -11,11 +11,26 @@ from app.database import get_db
 from app.models import AdminUser, Employee, EmployeeStatus, Role
 from app.utils.responses import err
 
-security = HTTPBearer(auto_error=False)
+admin_security = HTTPBearer(
+    auto_error=False,
+    scheme_name="AdminBearer",
+    description=(
+        "Admin JWT from **POST /v1/auth/login**. Paste only the token value "
+        "(Swagger adds `Bearer` automatically)."
+    ),
+)
+cashier_security = HTTPBearer(
+    auto_error=False,
+    scheme_name="CashierBearer",
+    description=(
+        "Cashier/POS JWT from **POST /v1/cashier/auth/login** (`principal: employee`, "
+        "`sub: emp:{id}`). Paste only the token value."
+    ),
+)
 
 
 def get_current_admin(
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(admin_security)],
     db: Annotated[Session, Depends(get_db)],
 ) -> AdminUser:
     if credentials is None or not credentials.credentials:
@@ -83,7 +98,7 @@ def _fallback_role_permissions(employee: Employee) -> set[str]:
 
 
 def get_cashier_principal(
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(cashier_security)],
     db: Annotated[Session, Depends(get_db)],
 ) -> CashierPrincipal:
     if credentials is None or not credentials.credentials:

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import CashierPrincipal, RequireCashierPermissions
-from app.models import StoreSetting
+from app.services.settings_payloads import payments_dict
 from app.utils.responses import ok
 
 router = APIRouter()
@@ -16,10 +16,5 @@ def get_tax_settings(
     _: Annotated[CashierPrincipal, Depends(RequireCashierPermissions("menu.view"))],
     db: Session = Depends(get_db),
 ):
-    row = db.query(StoreSetting).first()
-    if not row:
-        row = StoreSetting()
-        db.add(row)
-        db.commit()
-        db.refresh(row)
-    return ok({"tax_rate": float(row.tax_rate)})
+    """Authenticated shortcut for payment/tax fields. Prefer GET /v1/settings/general when no token."""
+    return ok(payments_dict(db))

@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -9,6 +9,7 @@ from app.core.kitchen_hub import notify_kitchen_order_created
 from app.schemas.cashier import (
     CashierCancelBody,
     CashierItemQuantityBody,
+    CashierOrderCommentsBody,
     CashierOrderCreate,
     CashierOrderItemAdd,
     CashierPayBody,
@@ -68,12 +69,29 @@ def list_active_orders(
                     "payment_status": r.payment_status.value,
                     "kot_printed": r.kot_printed,
                     "total_amount": float(r.total_amount),
+                    "comments": r.notes,
                     "created_at": r.created_at.isoformat().replace("+00:00", "Z") if r.created_at else None,
                 }
                 for r in rows
             ]
         }
     )
+
+
+@router.get("/search")
+def search_order(
+    order_id: Annotated[
+        str,
+        Query(
+            description="Numeric order id (primary key) or order_number (e.g. ORD-2025-001). "
+            "Partial order_number is allowed when it matches exactly one order.",
+        ),
+    ],
+    _: Annotated[CashierPrincipal, Depends(RequireCashierPermissions("orders.view"))],
+    db: Session = Depends(get_db),
+):
+    o = cashier_orders.find_order_by_reference(db, order_id)
+    return ok(order_ops.order_detail_dict(db, o))
 
 
 @router.get("/{order_id}/receipt")
@@ -101,6 +119,17 @@ def get_order(
     db: Session = Depends(get_db),
 ):
     o = cashier_orders.get_order(db, order_id)
+    return ok(order_ops.order_detail_dict(db, o))
+
+
+@router.patch("/{order_id}/comments")
+def patch_order_comments(
+    order_id: int,
+    body: CashierOrderCommentsBody,
+    _: Annotated[CashierPrincipal, Depends(RequireCashierPermissions("orders.update"))],
+    db: Session = Depends(get_db),
+):
+    o = cashier_orders.update_order_comments(db, order_id, body.comments)
     return ok(order_ops.order_detail_dict(db, o))
 
 

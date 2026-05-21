@@ -160,6 +160,7 @@ def order_detail_dict(db: Session, o: Order) -> dict:
         "kot_printed": o.kot_printed,
         "paid_at": o.paid_at.isoformat().replace("+00:00", "Z") if o.paid_at else None,
         "notes": o.notes,
+        "comments": o.notes,
         "assigned_employee": emp,
         "estimated_ready_time": o.estimated_ready_time.isoformat().replace("+00:00", "Z")
         if o.estimated_ready_time

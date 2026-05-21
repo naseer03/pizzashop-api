@@ -18,6 +18,7 @@ from app.models import (
     Role,
 )
 from app.schemas.ops import EmployeeCreate, EmployeeScheduleBody, EmployeeStatusPatch
+from app.services.delete_refs import deleted_payload
 from app.utils.responses import err, ok
 
 router = APIRouter(prefix="/employees", tags=["employees"])
@@ -291,7 +292,7 @@ def delete_employee_permanent(employee_id: int, _: CurrentAdmin, db: Session = D
     )
     db.delete(e)
     db.commit()
-    return ok({"id": employee_id, "deleted": True})
+    return ok(deleted_payload(employee_id))
 
 
 @router.delete("/{employee_id}")
@@ -305,4 +306,4 @@ def deactivate_employee(employee_id: int, _: CurrentAdmin, db: Session = Depends
     e.status = EmployeeStatus.inactive
     db.commit()
     db.refresh(e)
-    return ok({"id": e.id, "status": e.status.value})
+    return ok({"id": e.id, "status": e.status.value, "deleted": False})

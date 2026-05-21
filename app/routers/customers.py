@@ -8,6 +8,7 @@ from app.database import get_db
 from app.deps import CurrentAdmin
 from app.models import Customer, Order
 from app.schemas.ops import CustomerCreate, LoyaltyPatch
+from app.services.delete_refs import deleted_payload
 from app.utils.responses import err, ok
 
 router = APIRouter(prefix="/customers", tags=["customers"])
@@ -209,7 +210,7 @@ def loyalty_points(customer_id: int, body: LoyaltyPatch, _: CurrentAdmin, db: Se
     return ok({"loyalty_points": c.loyalty_points})
 
 
-@router.delete("/{customer_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{customer_id}")
 def deactivate_customer(customer_id: int, _: CurrentAdmin, db: Session = Depends(get_db)):
     c = db.get(Customer, customer_id)
     if not c:
@@ -219,4 +220,4 @@ def deactivate_customer(customer_id: int, _: CurrentAdmin, db: Session = Depends
         )
     c.is_active = False
     db.commit()
-    return None
+    return ok(deleted_payload(customer_id))

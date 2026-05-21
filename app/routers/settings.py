@@ -7,6 +7,13 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import CurrentAdmin
 from app.models import BusinessHour, DayOfWeek, NotificationSetting, StoreSetting
+from app.services.settings_payloads import (
+    business_hours_list,
+    ensure_store_row,
+    general_settings_dict,
+    payments_dict,
+    store_dict,
+)
 from app.schemas.ops import (
     BusinessHoursUpdateBody,
     PaymentsSettingsCreate,
@@ -19,60 +26,21 @@ from app.utils.responses import err, ok
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
-def _store_dict(s: StoreSetting) -> dict:
-    return {
-        "store_name": s.store_name,
-        "address_line1": s.address_line1,
-        "city": s.city,
-        "state": s.state,
-        "postal_code": s.postal_code,
-        "country": s.country,
-        "phone": s.phone,
-        "email": s.email,
-        "website": s.website,
-        "logo_url": s.logo_url,
-        "currency": s.currency,
-        "currency_symbol": s.currency_symbol,
-        "timezone": s.timezone,
-    }
-
-
-def _business_hours_list(db: Session) -> list[dict[str, Any]]:
-    rows = db.query(BusinessHour).order_by(BusinessHour.id).all()
-    if not rows:
-        for d in DayOfWeek:
-            db.add(
-                BusinessHour(
-                    day_of_week=d,
-                    is_open=True,
-                    open_time=time(10, 0),
-                    close_time=time(22, 0),
-                )
-            )
-        db.commit()
-        rows = db.query(BusinessHour).order_by(BusinessHour.id).all()
-    order = list(DayOfWeek)
-    rows = sorted(rows, key=lambda x: order.index(x.day_of_week))
-    return [
-        {
-            "day": b.day_of_week.value,
-            "is_open": b.is_open,
-            "open_time": b.open_time.strftime("%H:%M"),
-            "close_time": b.close_time.strftime("%H:%M"),
-        }
-        for b in rows
-    ]
+@router.get(
+    "/general",
+    summary="Public general settings (no auth)",
+    description=(
+        "Returns store profile, business hours, and payment/tax settings. "
+        "No authentication — intended for cashier/POS splash screens and customer displays."
+    ),
+)
+def get_general_settings(db: Session = Depends(get_db)):
+    return ok(general_settings_dict(db))
 
 
 @router.get("/store", summary="Get store settings")
 def get_store(_: CurrentAdmin, db: Session = Depends(get_db)):
-    s = db.query(StoreSetting).first()
-    if not s:
-        s = StoreSetting()
-        db.add(s)
-        db.commit()
-        db.refresh(s)
-    return ok(_store_dict(s))
+    return ok(store_dict(ensure_store_row(db)))
 
 
 @router.post(
@@ -108,7 +76,7 @@ def post_store(
     db.add(s)
     db.commit()
     db.refresh(s)
-    return ok(_store_dict(s))
+    return ok(store_dict(s))
 
 
 @router.put("/store", summary="Update store settings")
@@ -123,12 +91,12 @@ def put_store(body: StoreSettingsBody, _: CurrentAdmin, db: Session = Depends(ge
         setattr(s, k, v)
     db.commit()
     db.refresh(s)
-    return ok(_store_dict(s))
+    return ok(store_dict(s))
 
 
 @router.get("/business-hours")
 def get_business_hours(_: CurrentAdmin, db: Session = Depends(get_db)):
-    return ok(_business_hours_list(db))
+    return ok(business_hours_list(db))
 
 
 def _hh_mm(s: str) -> tuple[int, int]:
@@ -194,7 +162,7 @@ def put_business_hours(
         b.close_time = time(ch, cm)
         b.is_open = (oh, om) != (ch, cm)
     db.commit()
-    return ok(_business_hours_list(db))
+    return ok(business_hours_list(db))
 
 
 @router.get("/notifications")
@@ -225,28 +193,9 @@ def put_notifications(
     return ok({r.setting_key: r.setting_value for r in rows})
 
 
-def _store_for_payments(db: Session) -> StoreSetting:
-    s = db.query(StoreSetting).first()
-    if not s:
-        s = StoreSetting()
-        db.add(s)
-        db.commit()
-        db.refresh(s)
-    return s
-
-
-def _payments_payload(db: Session) -> dict[str, Any]:
-    s = _store_for_payments(db)
-    return {
-        "tax_rate": float(s.tax_rate),
-        "delivery_fee": float(s.delivery_fee),
-        "minimum_order_for_free_delivery": float(s.free_delivery_minimum_order),
-    }
-
-
 @router.get("/payments", summary="Get payment settings")
 def get_payments(_: CurrentAdmin, db: Session = Depends(get_db)):
-    return ok(_payments_payload(db))
+    return ok(payments_dict(db))
 
 
 @router.post(
@@ -284,12 +233,12 @@ def post_payments(
     db.add(s)
     db.commit()
     db.refresh(s)
-    return ok(_payments_payload(db))
+    return ok(payments_dict(db))
 
 
 @router.put("/payments", summary="Update payment settings")
 def put_payments(body: PaymentsSettingsBody, _: CurrentAdmin, db: Session = Depends(get_db)):
-    s = _store_for_payments(db)
+    s = ensure_store_row(db)
     data = body.model_dump(exclude_unset=True)
     if "tax_rate" in data:
         s.tax_rate = data["tax_rate"]
@@ -299,4 +248,4 @@ def put_payments(body: PaymentsSettingsBody, _: CurrentAdmin, db: Session = Depe
         s.free_delivery_minimum_order = data["minimum_order_for_free_delivery"]
     db.commit()
     db.refresh(s)
-    return ok(_payments_payload(db))
+    return ok(payments_dict(db))
