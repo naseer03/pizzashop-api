@@ -4,6 +4,7 @@ from app.models.entities import (
     BusinessHour,
     Category,
     Crust,
+    CrustCategory,
     Customer,
     DayOfWeek,
     Employee,
@@ -32,6 +33,7 @@ from app.models.entities import (
     StoreSetting,
     Subcategory,
     Topping,
+    ToppingCategory,
 )
 
 __all__ = [
@@ -40,6 +42,7 @@ __all__ = [
     "BusinessHour",
     "Category",
     "Crust",
+    "CrustCategory",
     "Customer",
     "DayOfWeek",
     "Employee",
@@ -68,4 +71,5 @@ __all__ = [
     "StoreSetting",
     "Subcategory",
     "Topping",
+    "ToppingCategory",
 ]

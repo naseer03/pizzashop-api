@@ -51,6 +51,30 @@ class SubcategoryCreate(BaseModel):
     display_order: int = 0
 
 
+def _normalize_category_ids(value: object) -> list[int]:
+    if value is None:
+        return []
+    if isinstance(value, int):
+        return [value]
+    if isinstance(value, str):
+        parts = [p.strip() for p in value.split(",") if p.strip()]
+        return [int(p) for p in parts]
+    if isinstance(value, list):
+        if not value:
+            return []
+        if isinstance(value[0], dict):
+            out: list[int] = []
+            for item in value:
+                if not isinstance(item, dict):
+                    continue
+                raw = item.get("id", item.get("category_id"))
+                if raw is not None:
+                    out.append(int(raw))
+            return out
+        return [int(v) for v in value]
+    raise ValueError("category_ids must be a list of integers")
+
+
 class ToppingCreate(BaseModel):
     name: str
     category_ids: list[int] = Field(
@@ -64,9 +88,22 @@ class ToppingCreate(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _legacy_category_id(cls, data: object) -> object:
-        if isinstance(data, dict) and "category_id" in data and "category_ids" not in data:
+        if not isinstance(data, dict):
+            return data
+        if "category_id" in data and "category_ids" not in data:
             data = {**data, "category_ids": [data["category_id"]]}
+        if "category_ids" in data:
+            data = {**data, "category_ids": _normalize_category_ids(data["category_ids"])}
         return data
+
+    @field_validator("category_ids")
+    @classmethod
+    def _dedupe_category_ids(cls, v: list[int]) -> list[int]:
+        seen: list[int] = []
+        for cid in v:
+            if cid not in seen:
+                seen.append(cid)
+        return seen
 
 
 class CrustCreate(BaseModel):
@@ -82,9 +119,13 @@ class CrustCreate(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _legacy_category_id(cls, data: object) -> object:
-        if isinstance(data, dict) and "category_id" in data and "category_ids" not in data:
+        if not isinstance(data, dict):
+            return data
+        if "category_id" in data and "category_ids" not in data:
             cid = data["category_id"]
             data = {**data, "category_ids": [] if cid is None else [cid]}
+        if "category_ids" in data:
+            data = {**data, "category_ids": _normalize_category_ids(data["category_ids"])}
         return data
 
     @field_validator("category_ids")

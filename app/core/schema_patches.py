@@ -239,9 +239,74 @@ def apply_cashier_schema_patches(engine: Engine) -> None:
                 )
                 log.warning("Applied DDL: crusts.category_id FK -> categories")
 
-            if _has_table(conn, "crust_categories"):
-                conn.execute(text("DROP TABLE crust_categories"))
-                log.warning("Applied DDL: dropped obsolete crust_categories table")
+            if not _has_table(conn, "topping_categories"):
+                conn.execute(
+                    text(
+                        """
+                        CREATE TABLE topping_categories (
+                            topping_id INT NOT NULL,
+                            category_id INT NOT NULL,
+                            PRIMARY KEY (topping_id, category_id),
+                            CONSTRAINT topping_categories_topping_fk
+                                FOREIGN KEY (topping_id) REFERENCES toppings (id) ON DELETE CASCADE,
+                            CONSTRAINT topping_categories_category_fk
+                                FOREIGN KEY (category_id) REFERENCES categories (id) ON DELETE CASCADE
+                        )
+                        """
+                    )
+                )
+                conn.execute(
+                    text(
+                        """
+                        INSERT IGNORE INTO topping_categories (topping_id, category_id)
+                        SELECT id, category_id FROM toppings WHERE category_id IS NOT NULL
+                        """
+                    )
+                )
+                log.warning("Applied DDL: topping_categories")
+
+            if not _has_table(conn, "crust_categories"):
+                conn.execute(
+                    text(
+                        """
+                        CREATE TABLE crust_categories (
+                            crust_id INT NOT NULL,
+                            category_id INT NOT NULL,
+                            PRIMARY KEY (crust_id, category_id),
+                            CONSTRAINT crust_categories_crust_fk
+                                FOREIGN KEY (crust_id) REFERENCES crusts (id) ON DELETE CASCADE,
+                            CONSTRAINT crust_categories_category_fk
+                                FOREIGN KEY (category_id) REFERENCES categories (id) ON DELETE CASCADE
+                        )
+                        """
+                    )
+                )
+                conn.execute(
+                    text(
+                        """
+                        INSERT IGNORE INTO crust_categories (crust_id, category_id)
+                        SELECT id, category_id FROM crusts WHERE category_id IS NOT NULL
+                        """
+                    )
+                )
+                log.warning("Applied DDL: crust_categories")
+            elif _has_column(conn, "crusts", "category_id"):
+                conn.execute(
+                    text(
+                        """
+                        INSERT IGNORE INTO crust_categories (crust_id, category_id)
+                        SELECT id, category_id FROM crusts WHERE category_id IS NOT NULL
+                        """
+                    )
+                )
+                conn.execute(
+                    text(
+                        """
+                        INSERT IGNORE INTO topping_categories (topping_id, category_id)
+                        SELECT id, category_id FROM toppings WHERE category_id IS NOT NULL
+                        """
+                    )
+                )
 
             if not _has_column(conn, "orders", "kot_printed"):
                 conn.execute(

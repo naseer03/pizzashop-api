@@ -11,6 +11,7 @@ from app.services.cashier_menu import invalidate_menu_cache
 from app.services.catalog_categories import (
     assign_crust_categories,
     crust_item_dict,
+    filter_crusts_by_category,
     group_crusts_by_category,
 )
 from app.services.delete_refs import deleted_payload, ensure_crust_deletable
@@ -31,8 +32,8 @@ def list_crusts(
 ):
     q = _crust_query(db)
     if category_id is not None:
-        q = q.filter(Crust.category_id == category_id)
-    return ok({"categories": group_crusts_by_category(q.all())})
+        q = filter_crusts_by_category(q, category_id)
+    return ok({"categories": group_crusts_by_category(db, q.all())})
 
 
 @router.get("/{crust_id}")
@@ -43,24 +44,25 @@ def get_crust(crust_id: int, _: CurrentAdmin, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=err("RESOURCE_NOT_FOUND", "Crust not found"),
         )
-    return ok(crust_item_dict(c))
+    return ok(crust_item_dict(db, c))
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_crust(body: CrustCreate, _: CurrentAdmin, db: Session = Depends(get_db)):
     c = Crust(
         name=body.name,
-        category_id=body.category_ids[0] if body.category_ids else None,
+        category_id=None,
         price=body.price,
         is_available=body.is_available,
         sort_order=body.sort_order,
     )
-    assign_crust_categories(db, c, body.category_ids)
     db.add(c)
+    db.flush()
+    assign_crust_categories(db, c, body.category_ids)
     db.commit()
     c = _crust_query(db).filter(Crust.id == c.id).one()
     invalidate_menu_cache()
-    return ok(crust_item_dict(c))
+    return ok(crust_item_dict(db, c))
 
 
 @router.put("/{crust_id}")
@@ -79,7 +81,7 @@ def update_crust(crust_id: int, body: CrustCreate, _: CurrentAdmin, db: Session 
     db.commit()
     db.refresh(c)
     invalidate_menu_cache()
-    return ok(crust_item_dict(c))
+    return ok(crust_item_dict(db, c))
 
 
 @router.patch("/{crust_id}/availability")
@@ -96,7 +98,7 @@ def patch_crust_availability(
     db.commit()
     db.refresh(c)
     invalidate_menu_cache()
-    return ok(crust_item_dict(c))
+    return ok(crust_item_dict(db, c))
 
 
 @router.delete("/{crust_id}")

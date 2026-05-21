@@ -10,6 +10,7 @@ from app.schemas.menu import AvailabilityPatch, ToppingCreate
 from app.services.cashier_menu import invalidate_menu_cache
 from app.services.catalog_categories import (
     assign_topping_categories,
+    filter_toppings_by_category,
     group_toppings_by_category,
     topping_item_dict,
 )
@@ -28,7 +29,7 @@ def list_toppings(
 ):
     q = db.query(Topping).order_by(Topping.sort_order, Topping.id)
     if category_id is not None:
-        q = q.filter(Topping.category_id == category_id)
+        q = filter_toppings_by_category(q, category_id)
     if is_available is not None:
         q = q.filter(Topping.is_available == is_available)
     rows = q.all()
@@ -55,8 +56,9 @@ def create_topping(body: ToppingCreate, _: CurrentAdmin, db: Session = Depends(g
         is_available=body.is_available,
         sort_order=body.sort_order,
     )
-    assign_topping_categories(db, t, body.category_ids)
     db.add(t)
+    db.flush()
+    assign_topping_categories(db, t, body.category_ids)
     db.commit()
     db.refresh(t)
     invalidate_menu_cache()

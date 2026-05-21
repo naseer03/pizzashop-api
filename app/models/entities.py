@@ -284,6 +284,17 @@ class Subcategory(Base):
     __table_args__ = (UniqueConstraint("category_id", "slug", name="unique_subcategory"),)
 
 
+class ToppingCategory(Base):
+    __tablename__ = "topping_categories"
+
+    topping_id: Mapped[int] = mapped_column(
+        ForeignKey("toppings.id", ondelete="CASCADE"), primary_key=True
+    )
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey("categories.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
 class Topping(Base):
     __tablename__ = "toppings"
 
@@ -296,6 +307,17 @@ class Topping(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class CrustCategory(Base):
+    __tablename__ = "crust_categories"
+
+    crust_id: Mapped[int] = mapped_column(
+        ForeignKey("crusts.id", ondelete="CASCADE"), primary_key=True
+    )
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey("categories.id", ondelete="CASCADE"), primary_key=True
     )
 
 

@@ -16,6 +16,7 @@ from app.models import (
     Role,
     Topping,
 )
+from app.services.catalog_categories import detach_category_from_toppings_and_crusts
 from app.utils.menu_images import try_remove_stored_menu_image
 from app.utils.responses import err
 
@@ -121,9 +122,5 @@ def delete_category_with_dependents(db: Session, category: Category) -> None:
             try_remove_stored_menu_image(mi.image_url)
             db.delete(mi)
 
-    db.query(Topping).filter(Topping.category_id == category.id).delete(synchronize_session=False)
-    db.query(Crust).filter(Crust.category_id == category.id).update(
-        {Crust.category_id: None},
-        synchronize_session=False,
-    )
+    detach_category_from_toppings_and_crusts(db, category.id)
     db.delete(category)

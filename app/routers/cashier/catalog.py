@@ -6,7 +6,12 @@ from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app.deps import CashierPrincipal, RequireCashierPermissions
 from app.models import Crust, Topping
-from app.services.catalog_categories import group_crusts_by_category, group_toppings_by_category
+from app.services.catalog_categories import (
+    filter_crusts_by_category,
+    filter_toppings_by_category,
+    group_crusts_by_category,
+    group_toppings_by_category,
+)
 from app.utils.responses import ok
 
 toppings_router = APIRouter()
@@ -24,7 +29,7 @@ def get_toppings(
     if only_available:
         q = q.filter(Topping.is_available.is_(True))
     if category_id is not None:
-        q = q.filter(Topping.category_id == category_id)
+        q = filter_toppings_by_category(q, category_id)
     return ok({"categories": group_toppings_by_category(db, q.all())})
 
 
@@ -39,5 +44,5 @@ def get_crusts(
     if only_available:
         q = q.filter(Crust.is_available.is_(True))
     if category_id is not None:
-        q = q.filter(Crust.category_id == category_id)
-    return ok({"categories": group_crusts_by_category(q.all())})
+        q = filter_crusts_by_category(q, category_id)
+    return ok({"categories": group_crusts_by_category(db, q.all())})
