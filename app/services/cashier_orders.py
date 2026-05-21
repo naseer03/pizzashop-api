@@ -255,6 +255,29 @@ def get_order(db: Session, order_id: int) -> Order:
     return o
 
 
+def resolve_order_ref(db: Session, order_ref: str) -> Order:
+    """Resolve an order by order_number (e.g. ORD-2026-001) or numeric primary key."""
+    ref = order_ref.strip()
+    if not ref:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=err("VALIDATION_ERROR", "Order reference is required"),
+        )
+
+    q = _order_detail_query(db)
+    for candidate in (ref, ref.upper()):
+        o = q.filter(Order.order_number == candidate).first()
+        if o:
+            return o
+
+    if ref.isdigit():
+        o = q.filter(Order.id == int(ref)).first()
+        if o:
+            return o
+
+    return find_order_by_order_number(db, ref)
+
+
 def find_order_by_order_number(db: Session, order_number: str) -> Order:
     """Resolve an order by order_number (e.g. ORD-2026-001), with optional unique partial match."""
     ref = order_number.strip()

@@ -1,11 +1,12 @@
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import CashierPrincipal, RequireCashierPermissions
 from app.core.kitchen_hub import notify_kitchen_order_created
+from app.models import Order
 from app.schemas.cashier import (
     CashierCancelBody,
     CashierItemQuantityBody,
@@ -15,9 +16,16 @@ from app.schemas.cashier import (
     CashierPayBody,
 )
 from app.services import cashier_orders, order_ops
-from app.utils.responses import err, ok
+from app.utils.responses import ok
 
 router = APIRouter()
+
+
+def resolve_cashier_order(
+    order_ref: str,
+    db: Session = Depends(get_db),
+) -> Order:
+    return cashier_orders.resolve_order_ref(db, order_ref)
 
 
 async def _broadcast_new_order(order_id: int) -> None:
@@ -80,133 +88,120 @@ def list_active_orders(
 
 @router.get("/search")
 def search_order(
-    _: Annotated[CashierPrincipal, Depends(RequireCashierPermissions("orders.view"))],
-    db: Session = Depends(get_db),
     order_number: Annotated[
-        str | None,
+        str,
         Query(
+            min_length=1,
             description="Order number to look up, e.g. ORD-2026-001. "
             "A partial value is allowed when it matches exactly one order.",
         ),
-    ] = None,
-    order_id: Annotated[
-        str | None,
-        Query(
-            description="Deprecated alias for order_number.",
-            deprecated=True,
-        ),
-    ] = None,
+    ],
+    _: Annotated[CashierPrincipal, Depends(RequireCashierPermissions("orders.view"))],
+    db: Session = Depends(get_db),
 ):
-    ref = (order_number or order_id or "").strip()
-    if not ref:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=err("VALIDATION_ERROR", "order_number query parameter is required"),
-        )
-    o = cashier_orders.find_order_by_order_number(db, ref)
+    o = cashier_orders.find_order_by_order_number(db, order_number)
     return ok(order_ops.order_detail_dict(db, o))
 
 
-@router.get("/{order_id}/receipt")
+@router.get("/{order_ref}/receipt")
 def receipt(
-    order_id: int,
+    order: Annotated[Order, Depends(resolve_cashier_order)],
     _: Annotated[CashierPrincipal, Depends(RequireCashierPermissions("orders.view"))],
     db: Session = Depends(get_db),
 ):
-    return ok(cashier_orders.receipt_json(db, order_id))
+    return ok(cashier_orders.receipt_json(db, order.id))
 
 
-@router.get("/{order_id}/invoice")
+@router.get("/{order_ref}/invoice")
 def invoice(
-    order_id: int,
+    order: Annotated[Order, Depends(resolve_cashier_order)],
     _: Annotated[CashierPrincipal, Depends(RequireCashierPermissions("orders.view"))],
     db: Session = Depends(get_db),
 ):
-    return ok(cashier_orders.invoice_json(db, order_id))
+    return ok(cashier_orders.invoice_json(db, order.id))
 
 
-@router.get("/{order_id}")
+@router.get("/{order_ref}")
 def get_order(
-    order_id: int,
+    order: Annotated[Order, Depends(resolve_cashier_order)],
     _: Annotated[CashierPrincipal, Depends(RequireCashierPermissions("orders.view"))],
     db: Session = Depends(get_db),
 ):
-    o = cashier_orders.get_order(db, order_id)
-    return ok(order_ops.order_detail_dict(db, o))
+    return ok(order_ops.order_detail_dict(db, order))
 
 
-@router.patch("/{order_id}/comments")
+@router.patch("/{order_ref}/comments")
 def patch_order_comments(
-    order_id: int,
+    order: Annotated[Order, Depends(resolve_cashier_order)],
     body: CashierOrderCommentsBody,
     _: Annotated[CashierPrincipal, Depends(RequireCashierPermissions("orders.update"))],
     db: Session = Depends(get_db),
 ):
-    o = cashier_orders.update_order_comments(db, order_id, body.comments)
+    o = cashier_orders.update_order_comments(db, order.id, body.comments)
     return ok(order_ops.order_detail_dict(db, o))
 
 
-@router.post("/{order_id}/items", status_code=status.HTTP_201_CREATED)
+@router.post("/{order_ref}/items", status_code=status.HTTP_201_CREATED)
 def add_item(
-    order_id: int,
+    order: Annotated[Order, Depends(resolve_cashier_order)],
     body: CashierOrderItemAdd,
     _: Annotated[CashierPrincipal, Depends(RequireCashierPermissions("orders.update"))],
     db: Session = Depends(get_db),
 ):
-    o = cashier_orders.add_line_item(db, order_id, body)
+    o = cashier_orders.add_line_item(db, order.id, body)
     return ok(order_ops.order_detail_dict(db, o))
 
 
-@router.put("/{order_id}/items/{item_id}")
+@router.put("/{order_ref}/items/{item_id}")
 def update_item_qty(
-    order_id: int,
+    order: Annotated[Order, Depends(resolve_cashier_order)],
     item_id: int,
     body: CashierItemQuantityBody,
     _: Annotated[CashierPrincipal, Depends(RequireCashierPermissions("orders.update"))],
     db: Session = Depends(get_db),
 ):
-    o = cashier_orders.update_line_quantity(db, order_id, item_id, body)
+    o = cashier_orders.update_line_quantity(db, order.id, item_id, body)
     return ok(order_ops.order_detail_dict(db, o))
 
 
-@router.delete("/{order_id}/items/{item_id}")
+@router.delete("/{order_ref}/items/{item_id}")
 def remove_item(
-    order_id: int,
+    order: Annotated[Order, Depends(resolve_cashier_order)],
     item_id: int,
     _: Annotated[CashierPrincipal, Depends(RequireCashierPermissions("orders.update"))],
     db: Session = Depends(get_db),
 ):
-    o = cashier_orders.remove_line_item(db, order_id, item_id)
+    o = cashier_orders.remove_line_item(db, order.id, item_id)
     return ok(order_ops.order_detail_dict(db, o))
 
 
-@router.post("/{order_id}/pay")
+@router.post("/{order_ref}/pay")
 def pay_order(
-    order_id: int,
+    order: Annotated[Order, Depends(resolve_cashier_order)],
     body: CashierPayBody,
     _: Annotated[CashierPrincipal, Depends(RequireCashierPermissions("orders.update"))],
     db: Session = Depends(get_db),
 ):
-    result = cashier_orders.process_payment(db, order_id, body)
+    result = cashier_orders.process_payment(db, order.id, body)
     return ok(result)
 
 
-@router.post("/{order_id}/cancel")
+@router.post("/{order_ref}/cancel")
 def cancel_order(
-    order_id: int,
+    order: Annotated[Order, Depends(resolve_cashier_order)],
     body: CashierCancelBody,
     _: Annotated[CashierPrincipal, Depends(RequireCashierPermissions("orders.cancel"))],
     db: Session = Depends(get_db),
 ):
-    o = cashier_orders.cancel_order(db, order_id, body)
+    o = cashier_orders.cancel_order(db, order.id, body)
     return ok(order_ops.order_detail_dict(db, o))
 
 
-@router.post("/{order_id}/hold")
+@router.post("/{order_ref}/hold")
 def hold_order(
-    order_id: int,
+    order: Annotated[Order, Depends(resolve_cashier_order)],
     _: Annotated[CashierPrincipal, Depends(RequireCashierPermissions("orders.update"))],
     db: Session = Depends(get_db),
 ):
-    o = cashier_orders.hold_order(db, order_id)
+    o = cashier_orders.hold_order(db, order.id)
     return ok(order_ops.order_detail_dict(db, o))
