@@ -300,3 +300,42 @@ def refresh_order_totals_from_items(db: Session, order: Order) -> None:
     order.tax_amount = tax_amount
     order.delivery_fee = delivery_fee
     order.total_amount = total_amount
+
+
+def _adjust_customer_after_order_removed(db: Session, order: Order) -> None:
+    if not order.customer_id:
+        return
+    cu = db.get(Customer, order.customer_id)
+    if not cu:
+        return
+    cu.total_orders = max(0, (cu.total_orders or 0) - 1)
+    cu.total_spent = max(
+        Decimal("0"),
+        (cu.total_spent or Decimal("0")) - (order.total_amount or Decimal("0")),
+    )
+
+
+def delete_order(db: Session, order_id: int) -> Order:
+    o = db.get(Order, order_id)
+    if not o:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=err("RESOURCE_NOT_FOUND", "Order not found"),
+        )
+    _adjust_customer_after_order_removed(db, o)
+    db.delete(o)
+    db.commit()
+    return o
+
+
+def delete_all_orders(db: Session) -> int:
+    count = db.query(Order).count()
+    if not count:
+        return 0
+    db.query(Customer).update(
+        {Customer.total_orders: 0, Customer.total_spent: Decimal("0.00")},
+        synchronize_session=False,
+    )
+    db.query(Order).delete(synchronize_session=False)
+    db.commit()
+    return count

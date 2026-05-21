@@ -26,6 +26,7 @@ from app.schemas.orders import (
     OrderStatusPatch,
     OrderUpdate,
 )
+from app.services.delete_refs import deleted_payload
 from app.utils.responses import err, ok
 
 router = APIRouter(prefix="/orders", tags=["orders"])
@@ -324,3 +325,17 @@ def refund_order(order_id: int, _: CurrentAdmin, db: Session = Depends(get_db)):
     o.payment_status = PaymentStatus.refunded
     db.commit()
     return ok({"id": o.id, "payment_status": o.payment_status.value})
+
+
+@router.delete("")
+def delete_all_orders(_: CurrentAdmin, db: Session = Depends(get_db)):
+    """Permanently remove every order and reset customer order aggregates."""
+    deleted_count = order_ops.delete_all_orders(db)
+    return ok({"deleted_count": deleted_count, "deleted": True})
+
+
+@router.delete("/{order_id}")
+def delete_order(order_id: int, _: CurrentAdmin, db: Session = Depends(get_db)):
+    """Permanently remove one order and its line items."""
+    order_ops.delete_order(db, order_id)
+    return ok(deleted_payload(order_id))
