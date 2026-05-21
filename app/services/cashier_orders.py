@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException, status
-from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.deps import CashierPrincipal
@@ -256,43 +255,27 @@ def get_order(db: Session, order_id: int) -> Order:
     return o
 
 
-def find_order_by_reference(db: Session, reference: str) -> Order:
-    """Resolve an order by numeric primary key or order_number (exact or unique partial)."""
-    ref = reference.strip()
+def find_order_by_order_number(db: Session, order_number: str) -> Order:
+    """Resolve an order by order_number (e.g. ORD-2026-001), with optional unique partial match."""
+    ref = order_number.strip()
     if not ref:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=err("VALIDATION_ERROR", "order_id query parameter is required"),
+            detail=err("VALIDATION_ERROR", "order_number query parameter is required"),
         )
 
     q = _order_detail_query(db)
 
-    if ref.isdigit():
-        o = q.filter(Order.id == int(ref)).first()
-        if o:
-            return o
-
-    o = q.filter(Order.order_number == ref).first()
-    if o:
-        return o
-
-    upper = ref.upper()
-    if upper != ref:
-        o = q.filter(Order.order_number == upper).first()
+    for candidate in (ref, ref.upper()):
+        o = q.filter(Order.order_number == candidate).first()
         if o:
             return o
 
     pattern = f"%{ref}%"
     matches = (
-        q.filter(
-            or_(
-                Order.order_number.like(pattern),
-                Order.customer_name.like(pattern),
-                Order.customer_phone.like(pattern),
-            )
-        )
+        q.filter(Order.order_number.like(pattern))
         .order_by(Order.id.desc())
-        .limit(5)
+        .limit(10)
         .all()
     )
     if len(matches) == 1:
@@ -301,8 +284,8 @@ def find_order_by_reference(db: Session, reference: str) -> Order:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=err(
-                "AMBIGUOUS_ORDER_REFERENCE",
-                "Multiple orders match this search; use the full order number or numeric id.",
+                "AMBIGUOUS_ORDER_NUMBER",
+                "Multiple orders match this order number; enter the full order number.",
                 details={
                     "matches": [
                         {"id": m.id, "order_number": m.order_number} for m in matches
@@ -315,6 +298,11 @@ def find_order_by_reference(db: Session, reference: str) -> Order:
         status_code=status.HTTP_404_NOT_FOUND,
         detail=err("RESOURCE_NOT_FOUND", "Order not found"),
     )
+
+
+def find_order_by_reference(db: Session, reference: str) -> Order:
+    """Backward-compatible alias for order-number search."""
+    return find_order_by_order_number(db, reference)
 
 
 def process_payment(db: Session, order_id: int, body: CashierPayBody) -> dict:

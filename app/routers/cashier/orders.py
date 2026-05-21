@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -15,7 +15,7 @@ from app.schemas.cashier import (
     CashierPayBody,
 )
 from app.services import cashier_orders, order_ops
-from app.utils.responses import ok
+from app.utils.responses import err, ok
 
 router = APIRouter()
 
@@ -80,17 +80,30 @@ def list_active_orders(
 
 @router.get("/search")
 def search_order(
-    order_id: Annotated[
-        str,
-        Query(
-            description="Numeric order id (primary key) or order_number (e.g. ORD-2025-001). "
-            "Partial order_number is allowed when it matches exactly one order.",
-        ),
-    ],
     _: Annotated[CashierPrincipal, Depends(RequireCashierPermissions("orders.view"))],
     db: Session = Depends(get_db),
+    order_number: Annotated[
+        str | None,
+        Query(
+            description="Order number to look up, e.g. ORD-2026-001. "
+            "A partial value is allowed when it matches exactly one order.",
+        ),
+    ] = None,
+    order_id: Annotated[
+        str | None,
+        Query(
+            description="Deprecated alias for order_number.",
+            deprecated=True,
+        ),
+    ] = None,
 ):
-    o = cashier_orders.find_order_by_reference(db, order_id)
+    ref = (order_number or order_id or "").strip()
+    if not ref:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=err("VALIDATION_ERROR", "order_number query parameter is required"),
+        )
+    o = cashier_orders.find_order_by_order_number(db, ref)
     return ok(order_ops.order_detail_dict(db, o))
 
 
