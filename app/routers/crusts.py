@@ -13,6 +13,7 @@ from app.services.catalog_categories import (
     crust_item_dict,
     filter_crusts_by_category,
     group_crusts_by_category,
+    list_crust_items,
 )
 from app.services.delete_refs import deleted_payload, ensure_crust_deletable
 from app.utils.responses import err, ok
@@ -29,11 +30,23 @@ def list_crusts(
     _: CurrentAdmin,
     db: Session = Depends(get_db),
     category_id: Annotated[int | None, Query(description="Filter by menu category id")] = None,
+    group_by_category: Annotated[
+        bool,
+        Query(
+            description=(
+                "If true, nest crusts under each linked category "
+                "(multi-category crusts appear once per category). Default false."
+            ),
+        ),
+    ] = False,
 ):
     q = _crust_query(db)
     if category_id is not None:
         q = filter_crusts_by_category(q, category_id)
-    return ok({"categories": group_crusts_by_category(db, q.all())})
+    rows = q.all()
+    if group_by_category:
+        return ok({"categories": group_crusts_by_category(db, rows)})
+    return ok({"crusts": list_crust_items(db, rows)})
 
 
 @router.get("/{crust_id}")

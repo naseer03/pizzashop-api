@@ -141,6 +141,16 @@ def crust_item_dict(db: Session, crust: Crust) -> dict:
     }
 
 
+def list_topping_items(db: Session, toppings: list[Topping]) -> list[dict]:
+    """One entry per topping (for admin list; no repeat per category)."""
+    return [topping_item_dict(db, t) for t in toppings]
+
+
+def list_crust_items(db: Session, crusts: list[Crust]) -> list[dict]:
+    """One entry per crust (for admin list; no repeat per category)."""
+    return [crust_item_dict(db, c) for c in crusts]
+
+
 def group_toppings_by_category(db: Session, toppings: list[Topping]) -> list[dict]:
     buckets: dict[int, list[dict]] = defaultdict(list)
     meta: dict[int, Category] = {}

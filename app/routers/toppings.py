@@ -12,6 +12,7 @@ from app.services.catalog_categories import (
     assign_topping_categories,
     filter_toppings_by_category,
     group_toppings_by_category,
+    list_topping_items,
     topping_item_dict,
 )
 from app.services.delete_refs import deleted_payload, ensure_topping_deletable
@@ -26,6 +27,15 @@ def list_toppings(
     db: Session = Depends(get_db),
     category_id: Annotated[int | None, Query(description="Filter by menu category id")] = None,
     is_available: Annotated[bool | None, Query()] = None,
+    group_by_category: Annotated[
+        bool,
+        Query(
+            description=(
+                "If true, nest toppings under each linked category "
+                "(multi-category toppings appear once per category). Default false."
+            ),
+        ),
+    ] = False,
 ):
     q = db.query(Topping).order_by(Topping.sort_order, Topping.id)
     if category_id is not None:
@@ -33,7 +43,9 @@ def list_toppings(
     if is_available is not None:
         q = q.filter(Topping.is_available == is_available)
     rows = q.all()
-    return ok({"categories": group_toppings_by_category(db, rows)})
+    if group_by_category:
+        return ok({"categories": group_toppings_by_category(db, rows)})
+    return ok({"toppings": list_topping_items(db, rows)})
 
 
 @router.get("/{topping_id}")
